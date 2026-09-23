@@ -74,11 +74,12 @@ If both pilots use the same room code:
 - a departure can be held when the other aircraft is detected in final/runway state
 - both clients know when the frequency is occupied
 - simultaneous PTT on the same frequency is treated as a double transmission and is not understood by ATC
-- pilot transcripts are shared with the other client on the same frequency
+- live pilot microphone audio is compressed to 8 kHz G.711 mu-law and streamed to the other PC while transmitting
+- pilot transcripts are also shared for visibility/debugging
 - ATC responses are shared and played on both clients when they are monitoring that frequency
 - ATIS information letters are derived from the same UTC half-hour slot so both clients stay synchronized
 
-Current raw pilot microphone audio is **not streamed to the other PC**. The other client receives the recognized radio transcript, while both clients hear the ATC response. This keeps the first multiplayer version low-bandwidth and reliable.
+Pilot-to-pilot radio audio does not use ElevenLabs. It is transmitted as small low-bandwidth mu-law chunks over Realtime Broadcast, so only ATC speech/transcription consumes ElevenLabs credit.
 
 ### LFLY circuit awareness
 
