@@ -27,10 +27,16 @@ namespace OhControl
         private readonly TextBox _roomCode = new TextBox();
 
         private CancellationTokenSource _captureCancellation;
+        private string _capturedKeyboardKey;
+        private int _capturedJoystickDeviceId;
+        private int _capturedJoystickButtonIndex;
 
         public SettingsForm(OhControlSettings settings)
         {
             _settings = settings;
+            _capturedKeyboardKey = settings.PttKeyboardKey;
+            _capturedJoystickDeviceId = settings.PttJoystickDeviceId;
+            _capturedJoystickButtonIndex = settings.PttJoystickButtonIndex;
 
             Text = "OhControl Settings";
             StartPosition = FormStartPosition.CenterParent;
@@ -49,13 +55,13 @@ namespace OhControl
             _elevenVoice.Text = _settings.ElevenLabsVoiceId;
             _elevenKey.UseSystemPasswordChar = true;
 
-            _keyboardPtt.Text = string.IsNullOrWhiteSpace(_settings.PttKeyboardKey)
+            _keyboardPtt.Text = string.IsNullOrWhiteSpace(_capturedKeyboardKey)
                 ? "None"
-                : _settings.PttKeyboardKey;
+                : _capturedKeyboardKey;
 
-            _joystickPtt.Text = _settings.PttJoystickDeviceId >= 0
-                ? "Joystick #" + _settings.PttJoystickDeviceId +
-                  " · button " + (_settings.PttJoystickButtonIndex + 1)
+            _joystickPtt.Text = _capturedJoystickDeviceId >= 0
+                ? "Joystick #" + _capturedJoystickDeviceId +
+                  " · button " + (_capturedJoystickButtonIndex + 1)
                 : "None";
 
             _multiplayerEnabled.Checked = _settings.MultiplayerEnabled;
@@ -123,8 +129,8 @@ namespace OhControl
 
             clearJoystick.Click += (_, __) =>
             {
-                _settings.PttJoystickDeviceId = -1;
-                _settings.PttJoystickButtonIndex = -1;
+                _capturedJoystickDeviceId = -1;
+                _capturedJoystickButtonIndex = -1;
                 _joystickPtt.Text = "None";
             };
 
@@ -184,8 +190,8 @@ namespace OhControl
             {
                 KeyDown -= handler;
                 KeyPreview = false;
-                _settings.PttKeyboardKey = args.KeyCode.ToString();
-                _keyboardPtt.Text = args.KeyCode.ToString();
+                _capturedKeyboardKey = args.KeyCode.ToString();
+                _keyboardPtt.Text = _capturedKeyboardKey;
                 args.SuppressKeyPress = true;
             };
 
@@ -214,8 +220,8 @@ namespace OhControl
                     return;
                 }
 
-                _settings.PttJoystickDeviceId = binding.Item1;
-                _settings.PttJoystickButtonIndex = binding.Item2;
+                _capturedJoystickDeviceId = binding.Item1;
+                _capturedJoystickButtonIndex = binding.Item2;
 
                 _joystickPtt.Text =
                     "Joystick #" + binding.Item1 +
@@ -234,6 +240,10 @@ namespace OhControl
             _settings.AircraftType = _aircraftType.Text.Trim();
             _settings.ElevenLabsApiKey = _elevenKey.Text.Trim();
             _settings.ElevenLabsVoiceId = _elevenVoice.Text.Trim();
+
+            _settings.PttKeyboardKey = _capturedKeyboardKey;
+            _settings.PttJoystickDeviceId = _capturedJoystickDeviceId;
+            _settings.PttJoystickButtonIndex = _capturedJoystickButtonIndex;
 
             _settings.MultiplayerEnabled = _multiplayerEnabled.Checked;
             _settings.SupabaseProjectUrl = _supabaseUrl.Text.Trim();
