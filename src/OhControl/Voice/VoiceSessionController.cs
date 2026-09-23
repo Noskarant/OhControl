@@ -18,8 +18,8 @@ namespace OhControl.Voice
     {
         private MicrophoneCapture _microphone;
         private readonly PttInputController _pushToTalk;
-        private readonly RadioAudioPlayer _audioPlayer;
-        private readonly RemotePilotAudioPlayer _remotePilotAudioPlayer;
+        private RadioAudioPlayer _audioPlayer;
+        private RemotePilotAudioPlayer _remotePilotAudioPlayer;
         private readonly RadioRouter _radioRouter;
         private readonly AtisService _atisService;
         private readonly AtcEngine _atcEngine;
@@ -68,8 +68,13 @@ namespace OhControl.Voice
                 CreateMicrophone(_settings.MicrophoneDeviceNumber);
 
             _pushToTalk = new PttInputController(_settings);
-            _audioPlayer = new RadioAudioPlayer();
-            _remotePilotAudioPlayer = new RemotePilotAudioPlayer();
+            _audioPlayer =
+                new RadioAudioPlayer(
+                    _settings.OutputDeviceNumber);
+
+            _remotePilotAudioPlayer =
+                new RemotePilotAudioPlayer(
+                    _settings.OutputDeviceNumber);
             _radioRouter = new RadioRouter();
             _atisService = new AtisService();
             _atcEngine = new AtcEngine(_atisService);
@@ -216,6 +221,17 @@ namespace OhControl.Voice
             _microphone =
                 CreateMicrophone(
                     _settings.MicrophoneDeviceNumber);
+
+            _audioPlayer.Dispose();
+            _remotePilotAudioPlayer.Dispose();
+
+            _audioPlayer =
+                new RadioAudioPlayer(
+                    _settings.OutputDeviceNumber);
+
+            _remotePilotAudioPlayer =
+                new RemotePilotAudioPlayer(
+                    _settings.OutputDeviceNumber);
 
             await _multiplayer.ReconfigureAsync(_settings)
                 .ConfigureAwait(false);
