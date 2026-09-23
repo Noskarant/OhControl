@@ -11,6 +11,5 @@
     <Compile Include="../../src/OhControl/MainForm.cs" Link="MainForm.cs" />
     <Compile Include="../../src/OhControl/SettingsForm.cs" Link="SettingsForm.cs" />
     <Compile Include="../../src/OhControl/Ui/OhControlTheme.cs" Link="Ui/OhControlTheme.cs" />
-    <Compile Include="Stubs.cs" />
   </ItemGroup>
 </Project>
