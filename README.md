@@ -140,6 +140,31 @@ It estimates:
 
 This geometry is intentionally conservative and still needs live validation inside MSFS before it should be treated as training-grade.
 
+## First launch
+
+For the current source-build test, Windows users can simply double-click:
+
+`Lancer OhControl.cmd`
+
+The launcher:
+
+- detects the MSFS 2024 SDK / SimConnect installation
+- explains the single Microsoft SDK step if it is missing
+- finds MSBuild or the .NET build tool automatically
+- builds OhControl only when needed
+- launches the application
+
+On the first application launch, a four-step wizard handles:
+
+1. SimConnect prerequisite check
+2. pilot callsign / name / aircraft
+3. ElevenLabs API key + controller Voice ID
+4. microphone / radio output / keyboard or joystick PTT
+
+Supabase / multiplayer is intentionally skipped during first-run setup for now.
+
+Microsoft's managed SimConnect wrapper is installed into the system by the MSFS SDK installer, so the SDK remains the one prerequisite that OhControl does not attempt to copy or replace.
+
 ## Settings
 
 Use the **Settings** button in OhControl. You do not need to manually edit JSON for normal use.
