@@ -12,7 +12,8 @@ namespace OhControl.Audio
         private readonly BufferedWaveProvider _buffer;
         private readonly WaveOutEvent _output;
 
-        public RemotePilotAudioPlayer()
+        public RemotePilotAudioPlayer(
+            int deviceNumber = -1)
         {
             _buffer =
                 new BufferedWaveProvider(
@@ -31,6 +32,7 @@ namespace OhControl.Audio
             _output =
                 new WaveOutEvent
                 {
+                    DeviceNumber = deviceNumber,
                     DesiredLatency = 80,
                     NumberOfBuffers = 3
                 };
