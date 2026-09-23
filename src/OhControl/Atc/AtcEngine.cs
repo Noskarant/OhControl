@@ -23,7 +23,8 @@ namespace OhControl.Atc
             Base,
             Final,
             ClearedToLand,
-            Landed
+            Landed,
+            Departed
         }
 
         private sealed class PendingReadback
@@ -275,11 +276,9 @@ namespace OhControl.Atc
                     "." +
                     trafficText +
                     " Rappelez vent arrière.",
-                    "Point de compte rendu " +
-                    reportingPoint.Code +
-                    " reconnu (" +
-                    reportingPoint.Name +
-                    ").");
+                    BuildReportingPointFeedback(
+                        reportingPoint,
+                        telemetry));
             }
 
             if (ContainsAny(
@@ -832,6 +831,50 @@ namespace OhControl.Atc
             }
 
             return null;
+        }
+
+        private static string BuildReportingPointFeedback(
+            LflyReportingPoint reported,
+            TelemetrySnapshot telemetry)
+        {
+            if (reported == null ||
+                telemetry == null)
+            {
+                return "Point de compte rendu reconnu.";
+            }
+
+            LflyReportingPointMatch nearest =
+                LflyReportingPoints.FindNearest(
+                    telemetry.LatitudeDeg,
+                    telemetry.LongitudeDeg,
+                    1.2);
+
+            if (nearest == null)
+            {
+                return "Point " +
+                       reported.Code +
+                       " annoncé, mais la télémétrie n'est pas à moins de 1,2 NM d'un point publié.";
+            }
+
+            if (!string.Equals(
+                nearest.Point.Code,
+                reported.Code,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "Attention : point " +
+                       reported.Code +
+                       " annoncé, position détectée près de " +
+                       nearest.Point.Code +
+                       " (" +
+                       nearest.DistanceNm.ToString("F1") +
+                       " NM).";
+            }
+
+            return "Point " +
+                   reported.Code +
+                   " cohérent avec la position (" +
+                   nearest.DistanceNm.ToString("F1") +
+                   " NM).";
         }
 
         private AtcResponse BuildIntegrationResponse(
