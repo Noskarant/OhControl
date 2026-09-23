@@ -40,6 +40,7 @@ namespace OhControl.Multiplayer
         public event Action<MultiplayerPlayerState, bool> RemoteTransmissionChanged;
         public event Action<MultiplayerPlayerState, string> RemoteTranscriptReceived;
         public event Action<MultiplayerPlayerState, string, double> RemoteAtcResponseReceived;
+        public event Action<MultiplayerPlayerState, double, byte[]> RemoteAudioChunkReceived;
 
         public MultiplayerSession(OhControlSettings settings)
         {
@@ -211,6 +212,27 @@ namespace OhControl.Multiplayer
 
             await BroadcastEventAsync(
                 "radio_transcript",
+                payload,
+                _sessionCancellation.Token).ConfigureAwait(false);
+        }
+
+        public async Task BroadcastVoiceChunkAsync(
+            byte[] muLawAudio,
+            double frequencyMhz)
+        {
+            if (!IsSocketOpen() ||
+                muLawAudio == null ||
+                muLawAudio.Length == 0)
+            {
+                return;
+            }
+
+            var payload = CreateIdentityPayload();
+            payload["frequencyMhz"] = frequencyMhz;
+            payload["audio"] = Convert.ToBase64String(muLawAudio);
+
+            await BroadcastEventAsync(
+                "radio_audio",
                 payload,
                 _sessionCancellation.Token).ConfigureAwait(false);
         }
@@ -512,6 +534,10 @@ namespace OhControl.Multiplayer
                 case "atc_response":
                     HandleRemoteAtcResponse(payload);
                     break;
+
+                case "radio_audio":
+                    HandleRemoteAudio(payload);
+                    break;
             }
         }
 
@@ -674,6 +700,54 @@ namespace OhControl.Multiplayer
                 state,
                 text,
                 frequency);
+        }
+
+        private void HandleRemoteAudio(JObject payload)
+        {
+            string playerId = (string)payload["playerId"];
+            string audioBase64 = (string)payload["audio"];
+            double frequency =
+                (double?)payload["frequencyMhz"] ?? 0;
+
+            if (string.IsNullOrWhiteSpace(audioBase64))
+            {
+                return;
+            }
+
+            byte[] bytes;
+
+            try
+            {
+                bytes = Convert.FromBase64String(audioBase64);
+            }
+            catch
+            {
+                return;
+            }
+
+            var state = _remotePlayers.GetOrAdd(
+                playerId,
+                _ => new MultiplayerPlayerState
+                {
+                    PlayerId = playerId
+                });
+
+            state.DisplayName =
+                (string)payload["displayName"] ?? state.DisplayName;
+
+            state.Callsign =
+                (string)payload["callsign"] ?? state.Callsign;
+
+            state.AircraftType =
+                (string)payload["aircraftType"] ?? state.AircraftType;
+
+            state.Com1ActiveMhz = frequency;
+            state.ReceivedAtUtc = DateTime.UtcNow;
+
+            RemoteAudioChunkReceived?.Invoke(
+                state,
+                frequency,
+                bytes);
         }
 
         private void CleanupStalePlayers()
