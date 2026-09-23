@@ -1,0 +1,6 @@
+{
+  "ElevenLabsApiKey": "YOUR_ELEVENLABS_API_KEY",
+  "ElevenLabsVoiceId": "YOUR_FRENCH_CONTROLLER_VOICE_ID",
+  "PilotCallsign": "F-GABC",
+  "MicrophoneDeviceNumber": -1
+}
