@@ -20,7 +20,7 @@ namespace OhControl
             AircraftTelemetry
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
         private struct AircraftTelemetryData
         {
             public double LatitudeDeg;
@@ -32,6 +32,21 @@ namespace OhControl
             public double IsOnGround;
             public double Com1ActiveMhz;
             public double Com1StandbyMhz;
+
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string Com1ActiveIdent;
+
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string Com1ActiveType;
+
+            public double Com1ActiveDistanceMeters;
+            public double Com1Receive;
+            public double Com1Transmit;
+            public double WindDirectionTrueDeg;
+            public double WindSpeedKt;
+            public double AmbientTemperatureC;
+            public double VisibilityMeters;
+            public double SeaLevelPressureMb;
         }
 
         public bool IsConnected { get; private set; }
@@ -120,77 +135,41 @@ namespace OhControl
 
         private void ConfigureTelemetry(SimConnect simConnect)
         {
+            AddFloat(simConnect, "PLANE LATITUDE", "degrees");
+            AddFloat(simConnect, "PLANE LONGITUDE", "degrees");
+            AddFloat(simConnect, "PLANE ALTITUDE", "feet");
+            AddFloat(simConnect, "PLANE HEADING DEGREES MAGNETIC", "degrees");
+            AddFloat(simConnect, "AIRSPEED INDICATED", "knots");
+            AddFloat(simConnect, "GROUND VELOCITY", "knots");
+            AddFloat(simConnect, "SIM ON GROUND", "Bool");
+            AddFloat(simConnect, "COM ACTIVE FREQUENCY:1", "MHz");
+            AddFloat(simConnect, "COM STANDBY FREQUENCY:1", "MHz");
+
             simConnect.AddToDataDefinition(
                 DataDefinitions.AircraftTelemetry,
-                "PLANE LATITUDE",
-                "degrees",
-                SIMCONNECT_DATATYPE.FLOAT64,
+                "COM ACTIVE FREQ IDENT:1",
+                null,
+                SIMCONNECT_DATATYPE.STRING64,
                 0.0f,
                 SimConnect.SIMCONNECT_UNUSED);
 
             simConnect.AddToDataDefinition(
                 DataDefinitions.AircraftTelemetry,
-                "PLANE LONGITUDE",
-                "degrees",
-                SIMCONNECT_DATATYPE.FLOAT64,
+                "COM ACTIVE FREQ TYPE:1",
+                null,
+                SIMCONNECT_DATATYPE.STRING64,
                 0.0f,
                 SimConnect.SIMCONNECT_UNUSED);
 
-            simConnect.AddToDataDefinition(
-                DataDefinitions.AircraftTelemetry,
-                "PLANE ALTITUDE",
-                "feet",
-                SIMCONNECT_DATATYPE.FLOAT64,
-                0.0f,
-                SimConnect.SIMCONNECT_UNUSED);
+            AddFloat(simConnect, "COM ACTIVE DISTANCE:1", "meters");
+            AddFloat(simConnect, "COM RECEIVE:1", "Bool");
+            AddFloat(simConnect, "COM TRANSMIT:1", "Bool");
 
-            simConnect.AddToDataDefinition(
-                DataDefinitions.AircraftTelemetry,
-                "PLANE HEADING DEGREES MAGNETIC",
-                "degrees",
-                SIMCONNECT_DATATYPE.FLOAT64,
-                0.0f,
-                SimConnect.SIMCONNECT_UNUSED);
-
-            simConnect.AddToDataDefinition(
-                DataDefinitions.AircraftTelemetry,
-                "AIRSPEED INDICATED",
-                "knots",
-                SIMCONNECT_DATATYPE.FLOAT64,
-                0.0f,
-                SimConnect.SIMCONNECT_UNUSED);
-
-            simConnect.AddToDataDefinition(
-                DataDefinitions.AircraftTelemetry,
-                "GROUND VELOCITY",
-                "knots",
-                SIMCONNECT_DATATYPE.FLOAT64,
-                0.0f,
-                SimConnect.SIMCONNECT_UNUSED);
-
-            simConnect.AddToDataDefinition(
-                DataDefinitions.AircraftTelemetry,
-                "SIM ON GROUND",
-                "Bool",
-                SIMCONNECT_DATATYPE.FLOAT64,
-                0.0f,
-                SimConnect.SIMCONNECT_UNUSED);
-
-            simConnect.AddToDataDefinition(
-                DataDefinitions.AircraftTelemetry,
-                "COM ACTIVE FREQUENCY:1",
-                "MHz",
-                SIMCONNECT_DATATYPE.FLOAT64,
-                0.0f,
-                SimConnect.SIMCONNECT_UNUSED);
-
-            simConnect.AddToDataDefinition(
-                DataDefinitions.AircraftTelemetry,
-                "COM STANDBY FREQUENCY:1",
-                "MHz",
-                SIMCONNECT_DATATYPE.FLOAT64,
-                0.0f,
-                SimConnect.SIMCONNECT_UNUSED);
+            AddFloat(simConnect, "AMBIENT WIND DIRECTION", "degrees");
+            AddFloat(simConnect, "AMBIENT WIND VELOCITY", "knots");
+            AddFloat(simConnect, "AMBIENT TEMPERATURE", "celsius");
+            AddFloat(simConnect, "AMBIENT VISIBILITY", "meters");
+            AddFloat(simConnect, "SEA LEVEL PRESSURE", "millibars");
 
             simConnect.RegisterDataDefineStruct<AircraftTelemetryData>(
                 DataDefinitions.AircraftTelemetry);
@@ -204,6 +183,20 @@ namespace OhControl
                 0,
                 0,
                 0);
+        }
+
+        private static void AddFloat(
+            SimConnect simConnect,
+            string name,
+            string unit)
+        {
+            simConnect.AddToDataDefinition(
+                DataDefinitions.AircraftTelemetry,
+                name,
+                unit,
+                SIMCONNECT_DATATYPE.FLOAT64,
+                0.0f,
+                SimConnect.SIMCONNECT_UNUSED);
         }
 
         private void OnRecvSimobjectData(
@@ -229,7 +222,17 @@ namespace OhControl
                 GroundSpeedKt = raw.GroundSpeedKt,
                 IsOnGround = raw.IsOnGround > 0.5,
                 Com1ActiveMhz = raw.Com1ActiveMhz,
-                Com1StandbyMhz = raw.Com1StandbyMhz
+                Com1StandbyMhz = raw.Com1StandbyMhz,
+                Com1ActiveIdent = raw.Com1ActiveIdent ?? "",
+                Com1ActiveType = raw.Com1ActiveType ?? "",
+                Com1ActiveDistanceMeters = raw.Com1ActiveDistanceMeters,
+                Com1Receive = raw.Com1Receive > 0.5,
+                Com1Transmit = raw.Com1Transmit > 0.5,
+                WindDirectionTrueDeg = NormalizeHeading(raw.WindDirectionTrueDeg),
+                WindSpeedKt = raw.WindSpeedKt,
+                AmbientTemperatureC = raw.AmbientTemperatureC,
+                VisibilityMeters = raw.VisibilityMeters,
+                SeaLevelPressureMb = raw.SeaLevelPressureMb
             });
         }
 
