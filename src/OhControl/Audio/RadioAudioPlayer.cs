@@ -12,7 +12,13 @@ namespace OhControl.Audio
     public sealed class RadioAudioPlayer : IDisposable
     {
         private readonly SemaphoreSlim _playLock = new SemaphoreSlim(1, 1);
+        private readonly int _deviceNumber;
         private WaveOutEvent _activeOutput;
+
+        public RadioAudioPlayer(int deviceNumber = -1)
+        {
+            _deviceNumber = deviceNumber;
+        }
 
         public async Task PlayAsync(byte[] mp3Bytes, CancellationToken cancellationToken)
         {
@@ -38,7 +44,10 @@ namespace OhControl.Audio
                     var completion = new TaskCompletionSource<bool>(
                         TaskCreationOptions.RunContinuationsAsynchronously);
 
-                    using (var output = new WaveOutEvent())
+                    using (var output = new WaveOutEvent
+                    {
+                        DeviceNumber = _deviceNumber
+                    })
                     using (cancellationToken.Register(() => output.Stop()))
                     {
                         _activeOutput = output;
