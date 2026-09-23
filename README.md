@@ -2,23 +2,31 @@
 
 OhControl is a private VFR ATC training companion for Microsoft Flight Simulator 2024.
 
-The first development target is **Lyon-Bron (LFLY)**. The current prototype already contains a complete local voice/radio chain and a SimConnect telemetry layer.
+The first development target is **Lyon-Bron (LFLY)**. The project is designed for two private pilots-in-training sharing the same virtual airspace while using the aircraft radios normally inside MSFS.
 
-## Current voice prototype
+## Current prototype
 
-- Global push-to-talk: **hold F12**
-- 16 kHz mono microphone capture
-- ElevenLabs **Scribe v2** French speech-to-text
-- Aviation keyterm prompting (Lyon-Bron, callsign, DR400, QNH, circuit terms...)
-- Deterministic VFR training state machine for common ground/tower exchanges
-- ElevenLabs **Flash v2.5** French controller voice
-- Local TTS disk cache to avoid paying again for identical transmissions
-- VHF-style audio filtering (roughly 300–3400 Hz), light noise/saturation and squelch clicks
-- Offline voice test mode: Tower / Ground / ATIS
-- ATIS loop starts automatically when the selected station is ATIS
-- Wrong LFLY frequency in MSFS = no OhControl controller
+### MSFS / SimConnect
 
-## LFLY radio data
+OhControl reads live:
+
+- latitude / longitude
+- altitude
+- magnetic heading
+- IAS / ground speed
+- ground / airborne state
+- COM1 active / standby
+- COM1 active station ident and type
+- COM1 RX / TX state
+- active COM station distance
+- wind direction / speed
+- ambient temperature
+- visibility
+- sea-level pressure
+
+The active COM1 frequency automatically selects the OhControl service.
+
+### LFLY radio services
 
 Versioned from **AIP France AD 2 LFLY, AIRAC 2026-09**:
 
@@ -26,67 +34,135 @@ Versioned from **AIP France AD 2 LFLY, AIRAC 2026-09**:
 - BRON Sol: **121.705 MHz**
 - BRON ATIS: **128.130 MHz**
 
-Aeronautical data must be re-checked when the AIRAC source changes.
+A wrong COM1 frequency means no OhControl controller.
 
-## ElevenLabs setup
+### Voice
 
-Copy:
+- configurable global keyboard push-to-talk
+- optional joystick / yoke PTT button using the Windows joystick API
+- 16 kHz mono microphone capture
+- ElevenLabs Scribe v2 French speech-to-text
+- aviation vocabulary prompting
+- ElevenLabs Flash v2.5 controller TTS
+- persistent local speech cache
+- VHF-style filtering, light saturation/noise and squelch clicks
+- ATIS loops automatically while tuned to 128.130
+- ATIS audio is cached rather than regenerated every loop
 
-`ohcontrol.local.example.json`
+### Multiplayer for two PCs
 
-to:
+Multiplayer uses **Supabase Realtime Broadcast** directly over WebSocket.
+
+No database table is required.
+
+Each client publishes about five telemetry updates per second:
+
+- callsign and aircraft type
+- position / altitude / heading / speeds
+- COM1 state
+- active runway
+- estimated LFLY circuit phase
+- runway-threshold distance
+- PTT state
+
+OhControl tracks remote players and removes stale aircraft automatically.
+
+If both pilots use the same room code:
+
+- both aircraft are visible to the ATC engine
+- ATC can sequence one aircraft behind the other
+- a departure can be held when the other aircraft is detected in final/runway state
+- both clients know when the frequency is occupied
+- simultaneous PTT on the same frequency is treated as a double transmission and is not understood by ATC
+- pilot transcripts are shared with the other client on the same frequency
+- ATC responses are shared and played on both clients when they are monitoring that frequency
+- ATIS information letters are derived from the same UTC half-hour slot so both clients stay synchronized
+
+Current raw pilot microphone audio is **not streamed to the other PC**. The other client receives the recognized radio transcript, while both clients hear the ATC response. This keeps the first multiplayer version low-bandwidth and reliable.
+
+### LFLY circuit awareness
+
+The detector uses current official runway geometry:
+
+- RWY 16 / 34
+- true bearings approximately 163.39 / 343.39 degrees
+- published circuit altitude **1500 ft AMSL (800 ft AAL)**
+- RWY 34 published right-hand circuit
+
+It estimates:
+
+- parked
+- taxiing
+- runway
+- initial climb
+- crosswind
+- downwind
+- base
+- final
+- departed
+
+This geometry is intentionally conservative and still needs live validation inside MSFS before it should be treated as training-grade.
+
+## Settings
+
+Use the **Settings** button in OhControl. You do not need to manually edit JSON for normal use.
+
+It lets you configure:
+
+- callsign
+- player name
+- aircraft type
+- ElevenLabs API key
+- ElevenLabs controller voice ID
+- keyboard PTT capture
+- joystick/yoke PTT capture
+- multiplayer on/off
+- Supabase project URL
+- Supabase publishable key
+- multiplayer room code
+
+Settings are saved to:
 
 `ohcontrol.local.json`
 
-and fill in your ElevenLabs API key and controller voice ID.
+This file is ignored by Git.
 
-Example:
+Never put a Supabase secret/service-role key in OhControl. Use a **publishable** client key.
 
-```json
-{
-  "ElevenLabsApiKey": "...",
-  "ElevenLabsVoiceId": "...",
-  "PilotCallsign": "F-GABC",
-  "MicrophoneDeviceNumber": -1
-}
-```
-
-`MicrophoneDeviceNumber = -1` uses the Windows default recording device.
-
-You can alternatively set:
+Environment-variable alternatives:
 
 - `OHCONTROL_ELEVENLABS_API_KEY`
 - `OHCONTROL_ELEVENLABS_VOICE_ID`
 - `OHCONTROL_CALLSIGN`
+- `OHCONTROL_SUPABASE_URL`
+- `OHCONTROL_SUPABASE_PUBLISHABLE_KEY`
+- `OHCONTROL_ROOM`
 
-The real `ohcontrol.local.json` file is ignored by Git and must never be committed.
+## Supabase setup
 
-## Testing voice without MSFS
+For a private two-person setup:
 
-1. Configure ElevenLabs.
+1. Create or choose a Supabase project.
+2. Copy its project URL.
+3. Copy its **publishable** client key.
+4. Put the same URL/key on both PCs.
+5. Choose a reasonably long shared room code.
+6. Enable multiplayer in OhControl.
+
+The current implementation uses a public Realtime Broadcast channel and does not store flight data in Postgres. The room code should therefore be treated as a private session identifier, not as strong authentication.
+
+Supabase Presence is intentionally not used for flight telemetry because it is not designed for high-frequency movement updates; Broadcast is.
+
+## Voice test without MSFS
+
+1. Configure ElevenLabs in Settings.
 2. Start OhControl.
-3. Ignore the SimConnect connection error if MSFS is not running.
-4. Select **Tower**, **Ground**, or **ATIS** under Offline voice test.
-5. For Tower/Ground, hold **F12**, speak, then release F12.
-6. OhControl transcribes the call, runs it through the training state machine, synthesizes the controller response and plays it through the radio filter.
-7. Selecting ATIS starts the broadcast loop automatically.
+3. Ignore the SimConnect message if MSFS is not running.
+4. Select Tower, Ground or ATIS under Offline voice test.
+5. Hold the configured PTT, speak and release it.
+6. OhControl transcribes the call, runs its ATC logic and plays the filtered controller response.
 
-## MSFS 2024 integration
-
-When connected, OhControl reads:
-
-- position / altitude / heading / speed
-- ground or airborne state
-- COM1 active and standby frequency
-- COM1 station ident and frequency type
-- COM1 receive / transmit state
-- distance to the active COM station
-- ambient wind
-- temperature
-- visibility
-- sea-level pressure
-
-The active COM1 frequency automatically selects the OhControl service.
+Two PCs can also test multiplayer without flying; meaningful movement awareness starts once SimConnect telemetry is available.
 
 ## Development prerequisites
 
@@ -106,6 +182,6 @@ If `MSFS2024_SDK` is not defined, it falls back to:
 
 ## Current limitations
 
-The current ATC engine is deliberately deterministic and only covers a first set of common VFR calls. It does **not** yet model other traffic, detailed LFLY taxi routes, circuit geometry, real separation, conflict detection or every DGAC phraseology case.
+The ATC engine is deterministic and currently targets common VFR training flows. It does not yet implement the complete French ATC rule set, detailed LFLY taxi routing, every reporting point, conflict prediction, wake-turbulence separation, transponder assignment, or real-time pilot-to-pilot voice audio.
 
-The next stage is to feed the voice engine with precise aircraft position/flight-phase detection around LFLY.
+The LFLY phase detector and ATC sequencing must be validated in live MSFS flights before relying on them for PPL training.
