@@ -12,6 +12,7 @@ namespace OhControl.Configuration
         public string PlayerDisplayName { get; set; } = Environment.MachineName;
         public string AircraftType { get; set; } = "DR400";
         public int MicrophoneDeviceNumber { get; set; } = -1;
+        public int OutputDeviceNumber { get; set; } = -1;
 
         public string PttKeyboardKey { get; set; } = "F12";
         public int PttJoystickDeviceId { get; set; } = -1;
