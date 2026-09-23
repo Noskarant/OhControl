@@ -18,6 +18,8 @@ namespace OhControl.Audio
 
         public bool IsRecording { get; private set; }
 
+        public event Action<byte[]> AudioChunkAvailable;
+
         public MicrophoneCapture(int deviceNumber)
         {
             _deviceNumber = deviceNumber;
@@ -89,10 +91,29 @@ namespace OhControl.Audio
 
         private void OnDataAvailable(object sender, WaveInEventArgs e)
         {
+            byte[] chunk = null;
+
             lock (_gate)
             {
                 _writer?.Write(e.Buffer, 0, e.BytesRecorded);
                 _writer?.Flush();
+
+                if (AudioChunkAvailable != null &&
+                    e.BytesRecorded > 0)
+                {
+                    chunk = new byte[e.BytesRecorded];
+                    Buffer.BlockCopy(
+                        e.Buffer,
+                        0,
+                        chunk,
+                        0,
+                        e.BytesRecorded);
+                }
+            }
+
+            if (chunk != null)
+            {
+                AudioChunkAvailable?.Invoke(chunk);
             }
         }
 
