@@ -145,10 +145,26 @@ namespace OhControl.Lfly
                 return null;
             }
 
-            return All.FirstOrDefault(
-                point =>
-                    point.RecognitionTerms.Any(
-                        term => normalizedTranscript.Contains(term)));
+            return All
+                .SelectMany(
+                    point =>
+                        point.RecognitionTerms.Select(
+                            term => new
+                            {
+                                Point = point,
+                                Term = term
+                            }))
+                .Where(
+                    candidate =>
+                        normalizedTranscript.Contains(
+                            candidate.Term))
+                .OrderByDescending(
+                    candidate =>
+                        candidate.Term.Length)
+                .Select(
+                    candidate =>
+                        candidate.Point)
+                .FirstOrDefault();
         }
 
         public static LflyReportingPointMatch FindNearest(
