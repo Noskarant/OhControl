@@ -166,10 +166,26 @@ namespace OhControl.Voice
             LflyFlightSituation situation =
                 _phaseDetector.Detect(telemetry, _activeRunway);
 
+            LflyReportingPointMatch reportingPoint =
+                LflyReportingPoints.FindNearest(
+                    telemetry.LatitudeDeg,
+                    telemetry.LongitudeDeg,
+                    1.0);
+
+            string reportingPointLabel =
+                reportingPoint == null
+                    ? ""
+                    : " · " +
+                      reportingPoint.Point.Code +
+                      " " +
+                      reportingPoint.DistanceNm.ToString("F1") +
+                      " NM";
+
             LocalPhaseChanged?.Invoke(
                 situation.Phase.ToString() +
                 " · RWY " +
-                _activeRunway);
+                _activeRunway +
+                reportingPointLabel);
 
             _multiplayer.UpdateLocalTelemetry(
                 new MultiplayerPlayerState
@@ -198,6 +214,8 @@ namespace OhControl.Voice
                         situation.DistanceToLandingThresholdMeters,
 
                     ActiveRunway = _activeRunway,
+                    NearbyReportingPoint =
+                        reportingPoint?.Point?.Code,
                     IsTransmitting = _microphone.IsRecording
                 });
         }
@@ -821,7 +839,36 @@ namespace OhControl.Voice
                 "piste 34",
                 "information Alpha",
                 "information Bravo",
-                "remise de gaz"
+                "remise de gaz",
+                "toucher",
+                "atterrissage complet",
+                "départ immédiat",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5",
+                "T1",
+                "T2",
+                "T3",
+                "TA",
+                "TB",
+                "TC",
+                "TN",
+                "TN2",
+                "November",
+                "Sierra",
+                "Mike Sierra",
+                "November Alpha",
+                "Sierra Alpha",
+                "November Whiskey",
+                "Tango Whiskey",
+                "Saint-Germain-au-Mont-d'Or",
+                "Chasse-sur-Rhône",
+                "Genas",
+                "Feyzin",
+                "Couzon",
+                "rond-point de l'Europe"
             };
 
             foreach (MultiplayerPlayerState player
