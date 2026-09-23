@@ -26,6 +26,20 @@ OhControl reads live:
 
 The active COM1 frequency automatically selects the OhControl service.
 
+### LFLY aeronautical data
+
+The prototype now includes current LFLY operational data used by the VFR trainer:
+
+- runway 16 / 34 geometry and published circuit altitude (1500 ft AMSL / 800 ft AAL)
+- runway holding points A1, A2, A3 and A4
+- default full-length departure holding point A1 for RWY 16 and A4 for RWY 34
+- published taxiway identifiers A1-A5, T1-T3, TA/TB/TC, TN/TN2 and TC1-TC7
+- A5 marked as ATC-clearance-only
+- reporting points N, S, MS, NA, SA, NW and TW with published coordinates/names
+- telemetry validation when the pilot announces a reporting point
+
+Taxi routing is deliberately conservative: until the in-sim parking/taxi geometry is validated, OhControl will not invent a detailed `via ...` route. It issues the appropriate full-length holding point and uses real taxiway/reporting-point names.
+
 ### LFLY radio services
 
 Versioned from **AIP France AD 2 LFLY, AIRAC 2026-09**:
@@ -35,6 +49,28 @@ Versioned from **AIP France AD 2 LFLY, AIRAC 2026-09**:
 - BRON ATIS: **128.130 MHz**
 
 A wrong COM1 frequency means no OhControl controller.
+
+### French VFR phraseology
+
+The deterministic ATC engine now covers the first useful training flow:
+
+- first contact with Bron Sol / Bron Tour
+- VFR taxi request with ATIS information
+- taxi clearance to the runway holding point + QNH
+- taxi readback validation
+- ready at holding point and transfer to Tower
+- line-up-and-wait with mandatory combined phraseology
+- line-up readback validation
+- take-off clearance and pilot readback as "je décolle"
+- integration / arrival via a published LFLY reporting point
+- downwind / base / final reports
+- landing clearance and pilot readback as "j'atterris"
+- touch-and-go requests and clearances
+- pilot-initiated go-around / circuit re-entry
+- runway vacated / transfer back to Ground
+- leaving the circuit / frequency
+
+The wording follows the current DGAC/DSNA phraseology manual where implemented. The engine remains intentionally deterministic; it does not ask a language model to invent clearances.
 
 ### Voice
 
