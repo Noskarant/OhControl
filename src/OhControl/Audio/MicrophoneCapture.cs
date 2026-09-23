@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using NAudio.Utils;
 using NAudio.Wave;
 
 namespace OhControl.Audio
