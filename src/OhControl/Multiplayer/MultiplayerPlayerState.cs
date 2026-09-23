@@ -24,6 +24,7 @@ namespace OhControl.Multiplayer
         public string CircuitPhase { get; set; }
         public double DistanceToThresholdMeters { get; set; }
         public string ActiveRunway { get; set; }
+        public string NearbyReportingPoint { get; set; }
 
         public bool IsTransmitting { get; set; }
         public string LastRadioTranscript { get; set; }
@@ -39,7 +40,13 @@ namespace OhControl.Multiplayer
                 ? "unknown"
                 : CircuitPhase;
 
+            string report =
+                string.IsNullOrWhiteSpace(NearbyReportingPoint)
+                    ? ""
+                    : " · " + NearbyReportingPoint;
+
             return Callsign + " · " + AircraftType + " · " + phase +
+                   report +
                    " · COM1 " + Com1ActiveMhz.ToString("F3");
         }
     }
