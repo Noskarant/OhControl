@@ -585,8 +585,12 @@ namespace OhControl.Atc
             TelemetrySnapshot telemetry,
             RadioStation station)
         {
+            string pendingKey =
+                NormalizeCallsignKey(
+                    callsignKey);
+
             if (!_pendingReadbacks.TryGetValue(
-                callsignKey,
+                pendingKey,
                 out PendingReadback pending))
             {
                 return null;
@@ -614,7 +618,7 @@ namespace OhControl.Atc
                         "point attente"))
                 {
                     _pendingReadbacks.Remove(
-                        callsignKey);
+                        pendingKey);
 
                     return new AtcResponse
                     {
@@ -735,7 +739,7 @@ namespace OhControl.Atc
                 if (correct)
                 {
                     _pendingReadbacks.Remove(
-                        callsignKey);
+                        pendingKey);
 
                     SetState(
                         callsignKey,
@@ -779,7 +783,7 @@ namespace OhControl.Atc
                 if (correct)
                 {
                     _pendingReadbacks.Remove(
-                        callsignKey);
+                        pendingKey);
 
                     return new AtcResponse
                     {
@@ -818,7 +822,7 @@ namespace OhControl.Atc
                 if (correct)
                 {
                     _pendingReadbacks.Remove(
-                        callsignKey);
+                        pendingKey);
 
                     return new AtcResponse
                     {
