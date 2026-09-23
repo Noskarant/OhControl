@@ -5,6 +5,7 @@
   "PlayerDisplayName": "Noe",
   "AircraftType": "DR400",
   "MicrophoneDeviceNumber": -1,
+  "OutputDeviceNumber": -1,
 
   "PttKeyboardKey": "F12",
   "PttJoystickDeviceId": -1,
