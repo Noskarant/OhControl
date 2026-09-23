@@ -200,20 +200,13 @@ namespace OhControl.Voice
                 throw new ArgumentNullException(nameof(settings));
             }
 
-            int previousMicrophone =
-                _settings.MicrophoneDeviceNumber;
-
             _settings = settings;
             _elevenLabs.UpdateSettings(_settings);
             _pushToTalk.Rebind(_settings);
 
-            if (previousMicrophone !=
-                _settings.MicrophoneDeviceNumber)
-            {
-                _microphone.Dispose();
-                _microphone = new MicrophoneCapture(
-                    _settings.MicrophoneDeviceNumber);
-            }
+            _microphone.Dispose();
+            _microphone = new MicrophoneCapture(
+                _settings.MicrophoneDeviceNumber);
 
             await _multiplayer.ReconfigureAsync(_settings)
                 .ConfigureAwait(false);
