@@ -408,6 +408,23 @@ namespace OhControl
                 return;
             }
 
+            PrerequisiteStatus prerequisite =
+                PrerequisiteChecker.Check();
+
+            if (!prerequisite.SimConnectSdkFound)
+            {
+                MessageBox.Show(
+                    this,
+                    "Il reste une seule étape : installer le SDK MSFS 2024 depuis Developer Mode → Help → SDK Installer. " +
+                    "Une fois installé, reviens ici et clique sur Ouvrir OhControl.",
+                    "SimConnect requis",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                ShowStep(0);
+                return;
+            }
+
             _settings.FirstRunCompleted = true;
             _settings.MultiplayerEnabled = false;
             _settings.Save();
