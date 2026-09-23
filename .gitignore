@@ -12,3 +12,4 @@ packages/
 TestResults/
 *.log
 .env
+ohcontrol.local.json
