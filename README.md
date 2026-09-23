@@ -115,6 +115,8 @@ It lets you configure:
 - aircraft type
 - ElevenLabs API key
 - ElevenLabs controller voice ID
+- microphone selection
+- radio/headset output selection
 - keyboard PTT capture
 - joystick/yoke PTT capture
 - multiplayer on/off
@@ -183,6 +185,6 @@ If `MSFS2024_SDK` is not defined, it falls back to:
 
 ## Current limitations
 
-The ATC engine is deterministic and currently targets common VFR training flows. It does not yet implement the complete French ATC rule set, detailed LFLY taxi routing, every reporting point, conflict prediction, wake-turbulence separation, transponder assignment, or real-time pilot-to-pilot voice audio.
+The ATC engine is deterministic and currently targets common VFR training flows. It does not yet implement the complete French ATC rule set, detailed LFLY taxi routing, every reporting point, conflict prediction, wake-turbulence separation, transponder assignment, or every advanced radio-propagation effect. Live pilot-to-pilot voice audio is already implemented for the shared session.
 
 The LFLY phase detector and ATC sequencing must be validated in live MSFS flights before relying on them for PPL training.
