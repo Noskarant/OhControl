@@ -19,6 +19,7 @@ namespace OhControl.Voice
         private MicrophoneCapture _microphone;
         private readonly PttInputController _pushToTalk;
         private readonly RadioAudioPlayer _audioPlayer;
+        private readonly RemotePilotAudioPlayer _remotePilotAudioPlayer;
         private readonly RadioRouter _radioRouter;
         private readonly AtisService _atisService;
         private readonly AtcEngine _atcEngine;
@@ -64,10 +65,11 @@ namespace OhControl.Voice
                 settings ?? throw new ArgumentNullException(nameof(settings));
 
             _microphone =
-                new MicrophoneCapture(_settings.MicrophoneDeviceNumber);
+                CreateMicrophone(_settings.MicrophoneDeviceNumber);
 
             _pushToTalk = new PttInputController(_settings);
             _audioPlayer = new RadioAudioPlayer();
+            _remotePilotAudioPlayer = new RemotePilotAudioPlayer();
             _radioRouter = new RadioRouter();
             _atisService = new AtisService();
             _atcEngine = new AtcEngine(_atisService);
@@ -90,6 +92,9 @@ namespace OhControl.Voice
 
             _multiplayer.RemoteAtcResponseReceived +=
                 OnRemoteAtcResponseReceived;
+
+            _multiplayer.RemoteAudioChunkReceived +=
+                OnRemoteAudioChunkReceived;
 
             RefreshStation();
         }
@@ -204,9 +209,13 @@ namespace OhControl.Voice
             _elevenLabs.UpdateSettings(_settings);
             _pushToTalk.Rebind(_settings);
 
+            _microphone.AudioChunkAvailable -=
+                OnLocalAudioChunk;
+
             _microphone.Dispose();
-            _microphone = new MicrophoneCapture(
-                _settings.MicrophoneDeviceNumber);
+            _microphone =
+                CreateMicrophone(
+                    _settings.MicrophoneDeviceNumber);
 
             await _multiplayer.ReconfigureAsync(_settings)
                 .ConfigureAwait(false);
@@ -223,7 +232,11 @@ namespace OhControl.Voice
             _pushToTalk.Released -= OnPttReleased;
             _pushToTalk.Dispose();
 
+            _microphone.AudioChunkAvailable -=
+                OnLocalAudioChunk;
+
             _microphone.Dispose();
+            _remotePilotAudioPlayer.Dispose();
             _audioPlayer.Dispose();
             _multiplayer.Dispose();
             _elevenLabs.Dispose();
@@ -263,6 +276,7 @@ namespace OhControl.Voice
             }
 
             _audioPlayer.Stop();
+            _remotePilotAudioPlayer.Reset();
             CancelAtis();
 
             StationChanged?.Invoke(
@@ -312,6 +326,7 @@ namespace OhControl.Voice
             try
             {
                 _collisionDetected = IsCurrentFrequencyBusy();
+                _remotePilotAudioPlayer.Reset();
                 _microphone.Start();
 
                 _ = _multiplayer.BroadcastTransmissionStateAsync(
@@ -573,6 +588,59 @@ namespace OhControl.Voice
                 StatusChanged?.Invoke(
                     "ATC multijoueur : " + ex.Message);
             }
+        }
+
+        private void OnRemoteAudioChunkReceived(
+            MultiplayerPlayerState player,
+            double frequencyMhz,
+            byte[] muLawAudio)
+        {
+            if (_microphone.IsRecording ||
+                !SameFrequency(
+                    frequencyMhz,
+                    CurrentFrequencyMhz) ||
+                !CanReceiveCurrentFrequency())
+            {
+                return;
+            }
+
+            _remotePilotAudioPlayer.AddMuLawChunk(
+                muLawAudio);
+        }
+
+        private void OnLocalAudioChunk(byte[] pcm16k)
+        {
+            if (!_microphone.IsRecording ||
+                _currentStation == null ||
+                _currentStation.Kind == RadioStationKind.Atis)
+            {
+                return;
+            }
+
+            byte[] encoded =
+                RadioVoiceCodec.Encode16kPcmTo8kMuLaw(
+                    pcm16k);
+
+            if (encoded.Length == 0)
+            {
+                return;
+            }
+
+            _ = _multiplayer.BroadcastVoiceChunkAsync(
+                encoded,
+                CurrentFrequencyMhz);
+        }
+
+        private MicrophoneCapture CreateMicrophone(
+            int deviceNumber)
+        {
+            var microphone =
+                new MicrophoneCapture(deviceNumber);
+
+            microphone.AudioChunkAvailable +=
+                OnLocalAudioChunk;
+
+            return microphone;
         }
 
         private bool IsCurrentFrequencyBusy()
