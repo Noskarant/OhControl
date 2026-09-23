@@ -14,8 +14,12 @@ namespace OhControl.Radio
 
     public sealed class AtisService
     {
+        private static readonly TimeSpan MinimumUpdateInterval = TimeSpan.FromMinutes(2);
+
         private int _informationIndex;
         private string _lastWeatherSignature;
+        private DateTime _lastUpdateUtc = DateTime.MinValue;
+        private AtisBroadcast _currentBroadcast;
 
         public AtisBroadcast Build(TelemetrySnapshot telemetry)
         {
@@ -42,36 +46,66 @@ namespace OhControl.Radio
                 temperature,
                 Math.Min(visibilityKm, 10));
 
-            if (_lastWeatherSignature != null &&
-                !string.Equals(_lastWeatherSignature, signature, StringComparison.Ordinal))
+            DateTime now = DateTime.UtcNow;
+
+            if (_currentBroadcast != null)
             {
-                _informationIndex = (_informationIndex + 1) % InformationNames.Length;
+                if (string.Equals(
+                    _lastWeatherSignature,
+                    signature,
+                    StringComparison.Ordinal))
+                {
+                    return _currentBroadcast;
+                }
+
+                if (now - _lastUpdateUtc < MinimumUpdateInterval)
+                {
+                    return _currentBroadcast;
+                }
+
+                _informationIndex =
+                    (_informationIndex + 1) % InformationNames.Length;
             }
 
             _lastWeatherSignature = signature;
+            _lastUpdateUtc = now;
+
             string information = InformationNames[_informationIndex];
 
             string visibilityText = visibilityKm >= 10
                 ? "visibilité supérieure à dix kilomètres"
-                : "visibilité " + AviationFrenchNumbers.DigitsOnly(visibilityKm) + " kilomètres";
+                : "visibilité " +
+                  AviationFrenchNumbers.DigitsOnly(visibilityKm) +
+                  " kilomètres";
 
             string text =
                 "Bron information " + information + ". " +
-                "Piste en service " + AviationFrenchNumbers.Runway(runway) + ". " +
-                "Vent " + AviationFrenchNumbers.DigitsOnly(windDirection, 3) +
-                " degrés, " + AviationFrenchNumbers.DigitsOnly(windSpeed) + " noeuds. " +
+                "Piste en service " +
+                AviationFrenchNumbers.Runway(runway) + ". " +
+                "Vent " +
+                AviationFrenchNumbers.DigitsOnly(windDirection, 3) +
+                " degrés, " +
+                AviationFrenchNumbers.DigitsOnly(windSpeed) +
+                " noeuds. " +
                 visibilityText + ". " +
-                "Température " + AviationFrenchNumbers.DigitsOnly(temperature) + " degrés. " +
-                "Q N H " + AviationFrenchNumbers.DigitsOnly(qnh) + ". " +
-                "Signalez information " + information + " reçue.";
+                "Température " +
+                AviationFrenchNumbers.DigitsOnly(temperature) +
+                " degrés. " +
+                "Q N H " +
+                AviationFrenchNumbers.DigitsOnly(qnh) + ". " +
+                "Signalez information " +
+                information +
+                " reçue.";
 
-            return new AtisBroadcast
+            _currentBroadcast = new AtisBroadcast
             {
                 Information = information,
                 Runway = runway,
                 Text = text,
                 CacheKey = ComputeHash(text)
             };
+
+            return _currentBroadcast;
         }
 
         private static string SelectRunway(int windDirection, int windSpeed)
@@ -121,7 +155,9 @@ namespace OhControl.Radio
             using (var sha = SHA256.Create())
             {
                 byte[] bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(text));
-                return BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
+                return BitConverter.ToString(bytes)
+                    .Replace("-", "")
+                    .ToLowerInvariant();
             }
         }
 
