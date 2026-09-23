@@ -39,6 +39,7 @@ namespace OhControl.Multiplayer
         public event Action<IReadOnlyList<MultiplayerPlayerState>> RemotePlayersChanged;
         public event Action<MultiplayerPlayerState, bool> RemoteTransmissionChanged;
         public event Action<MultiplayerPlayerState, string> RemoteTranscriptReceived;
+        public event Action<MultiplayerPlayerState, string, double> RemoteAtcResponseReceived;
 
         public MultiplayerSession(OhControlSettings settings)
         {
@@ -203,6 +204,27 @@ namespace OhControl.Multiplayer
 
             await BroadcastEventAsync(
                 "radio_transcript",
+                payload,
+                _sessionCancellation.Token).ConfigureAwait(false);
+        }
+
+        public async Task BroadcastAtcResponseAsync(
+            string responseText,
+            double frequencyMhz,
+            string targetCallsign)
+        {
+            if (!IsSocketOpen() || string.IsNullOrWhiteSpace(responseText))
+            {
+                return;
+            }
+
+            var payload = CreateIdentityPayload();
+            payload["text"] = responseText;
+            payload["frequencyMhz"] = frequencyMhz;
+            payload["targetCallsign"] = targetCallsign ?? "";
+
+            await BroadcastEventAsync(
+                "atc_response",
                 payload,
                 _sessionCancellation.Token).ConfigureAwait(false);
         }
@@ -472,6 +494,10 @@ namespace OhControl.Multiplayer
                 case "radio_transcript":
                     HandleRemoteTranscript(payload);
                     break;
+
+                case "atc_response":
+                    HandleRemoteAtcResponse(payload);
+                    break;
             }
         }
 
@@ -598,6 +624,42 @@ namespace OhControl.Multiplayer
 
             RemoteTranscriptReceived?.Invoke(state, text);
             RaisePlayersChanged();
+        }
+
+        private void HandleRemoteAtcResponse(JObject payload)
+        {
+            string playerId = (string)payload["playerId"];
+            string text = (string)payload["text"];
+            double frequency =
+                (double?)payload["frequencyMhz"] ?? 0;
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            var state = _remotePlayers.GetOrAdd(
+                playerId,
+                _ => new MultiplayerPlayerState
+                {
+                    PlayerId = playerId
+                });
+
+            state.DisplayName =
+                (string)payload["displayName"] ?? state.DisplayName;
+
+            state.Callsign =
+                (string)payload["callsign"] ?? state.Callsign;
+
+            state.AircraftType =
+                (string)payload["aircraftType"] ?? state.AircraftType;
+
+            state.ReceivedAtUtc = DateTime.UtcNow;
+
+            RemoteAtcResponseReceived?.Invoke(
+                state,
+                text,
+                frequency);
         }
 
         private void CleanupStalePlayers()
