@@ -1,13 +1,18 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using OhControl.Configuration;
 using OhControl.Lfly;
+using OhControl.Radio;
+using OhControl.Voice;
 
 namespace OhControl
 {
     public sealed class MainForm : Form
     {
         private readonly SimConnectClient _simConnect = new SimConnectClient();
+        private readonly OhControlSettings _settings;
+        private readonly VoiceSessionController _voice;
 
         private readonly Label _statusValue = new Label();
         private readonly Label _positionValue = new Label();
@@ -16,23 +21,37 @@ namespace OhControl
         private readonly Label _speedValue = new Label();
         private readonly Label _groundValue = new Label();
         private readonly Label _comValue = new Label();
+        private readonly Label _weatherValue = new Label();
+
+        private readonly Label _voiceConfigValue = new Label();
+        private readonly Label _stationValue = new Label();
+        private readonly Label _voiceStatusValue = new Label();
+        private readonly Label _pilotTextValue = new Label();
+        private readonly Label _controllerTextValue = new Label();
+        private readonly Label _feedbackValue = new Label();
+        private readonly ComboBox _testStation = new ComboBox();
+
         private readonly Button _connectButton = new Button();
 
         public MainForm()
         {
+            _settings = OhControlSettings.Load();
+            _voice = new VoiceSessionController(_settings);
+
             Text = "OhControl — " + LflyAirport.Icao + " " + LflyAirport.Name;
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(720, 480);
-            Size = new Size(820, 540);
+            MinimumSize = new Size(820, 680);
+            Size = new Size(980, 780);
 
             BuildUi();
+            WireEvents();
 
-            _simConnect.Connected += OnConnected;
-            _simConnect.Disconnected += OnDisconnected;
-            _simConnect.TelemetryReceived += OnTelemetryReceived;
-            _simConnect.Error += OnSimConnectError;
+            FormClosed += (_, __) =>
+            {
+                _voice.Dispose();
+                _simConnect.Dispose();
+            };
 
-            FormClosed += (_, __) => _simConnect.Dispose();
             Shown += (_, __) => ConnectToSimulator();
         }
 
@@ -44,6 +63,29 @@ namespace OhControl
             }
 
             base.WndProc(ref m);
+        }
+
+        private void WireEvents()
+        {
+            _simConnect.Connected += OnConnected;
+            _simConnect.Disconnected += OnDisconnected;
+            _simConnect.TelemetryReceived += OnTelemetryReceived;
+            _simConnect.Error += OnSimConnectError;
+
+            _voice.StatusChanged += value =>
+                Ui(() => _voiceStatusValue.Text = value);
+
+            _voice.StationChanged += value =>
+                Ui(() => _stationValue.Text = value);
+
+            _voice.PilotTextReceived += value =>
+                Ui(() => _pilotTextValue.Text = value);
+
+            _voice.ControllerTextGenerated += value =>
+                Ui(() => _controllerTextValue.Text = value);
+
+            _voice.FeedbackGenerated += value =>
+                Ui(() => _feedbackValue.Text = value);
         }
 
         private void BuildUi()
@@ -58,10 +100,10 @@ namespace OhControl
 
             var subtitle = new Label
             {
-                Text = "VFR ATC prototype — " + LflyAirport.Icao + " " + LflyAirport.Name,
+                Text = "VFR ATC trainer — " + LflyAirport.Icao + " " + LflyAirport.Name,
                 AutoSize = true,
                 ForeColor = Color.DimGray,
-                Margin = new Padding(0, 0, 0, 24)
+                Margin = new Padding(0, 0, 0, 18)
             };
 
             _statusValue.Text = "Disconnected";
@@ -71,30 +113,87 @@ namespace OhControl
             _speedValue.Text = "—";
             _groundValue.Text = "—";
             _comValue.Text = "—";
+            _weatherValue.Text = "—";
+
+            _voiceConfigValue.Text = _settings.IsElevenLabsConfigured
+                ? "Configured"
+                : "Missing ohcontrol.local.json / environment variables";
+
+            _stationValue.Text = "BRON Tour 118.100 MHz (test mode)";
+            _voiceStatusValue.Text = "Maintiens F12 pour parler.";
+            _pilotTextValue.Text = "—";
+            _controllerTextValue.Text = "—";
+            _feedbackValue.Text = "—";
+
+            foreach (Label label in new[]
+            {
+                _pilotTextValue,
+                _controllerTextValue,
+                _feedbackValue,
+                _voiceStatusValue,
+                _comValue,
+                _weatherValue
+            })
+            {
+                label.MaximumSize = new Size(680, 0);
+                label.AutoSize = true;
+            }
 
             _connectButton.Text = "Connect to MSFS 2024";
             _connectButton.AutoSize = true;
             _connectButton.Click += (_, __) => ConnectToSimulator();
 
-            var telemetryTable = new TableLayoutPanel
+            _testStation.DropDownStyle = ComboBoxStyle.DropDownList;
+            _testStation.Items.Add("Tower — 118.100");
+            _testStation.Items.Add("Ground — 121.705");
+            _testStation.Items.Add("ATIS — 128.130");
+            _testStation.SelectedIndex = 0;
+            _testStation.SelectedIndexChanged += (_, __) =>
             {
-                AutoSize = true,
-                ColumnCount = 2,
-                RowCount = 7,
-                Dock = DockStyle.Top,
-                Margin = new Padding(0, 16, 0, 16)
+                RadioStationKind kind =
+                    _testStation.SelectedIndex == 2
+                        ? RadioStationKind.Atis
+                        : _testStation.SelectedIndex == 1
+                            ? RadioStationKind.Ground
+                            : RadioStationKind.Tower;
+
+                _voice.SetTestStation(kind);
             };
 
-            telemetryTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
-            telemetryTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            var simTable = CreateTable(8);
+            AddRow(simTable, 0, "SimConnect", _statusValue);
+            AddRow(simTable, 1, "Position", _positionValue);
+            AddRow(simTable, 2, "Altitude", _altitudeValue);
+            AddRow(simTable, 3, "Heading", _headingValue);
+            AddRow(simTable, 4, "Speed", _speedValue);
+            AddRow(simTable, 5, "Aircraft state", _groundValue);
+            AddRow(simTable, 6, "COM1", _comValue);
+            AddRow(simTable, 7, "Weather", _weatherValue);
 
-            AddRow(telemetryTable, 0, "SimConnect", _statusValue);
-            AddRow(telemetryTable, 1, "Position", _positionValue);
-            AddRow(telemetryTable, 2, "Altitude", _altitudeValue);
-            AddRow(telemetryTable, 3, "Heading", _headingValue);
-            AddRow(telemetryTable, 4, "Speed", _speedValue);
-            AddRow(telemetryTable, 5, "Aircraft state", _groundValue);
-            AddRow(telemetryTable, 6, "COM1", _comValue);
+            var voiceTable = CreateTable(7);
+            AddRow(voiceTable, 0, "ElevenLabs", _voiceConfigValue);
+            AddRow(voiceTable, 1, "Current station", _stationValue);
+            AddRow(voiceTable, 2, "Voice status", _voiceStatusValue);
+            AddRow(voiceTable, 3, "Pilot heard", _pilotTextValue);
+            AddRow(voiceTable, 4, "Controller", _controllerTextValue);
+            AddRow(voiceTable, 5, "Training feedback", _feedbackValue);
+            AddRow(voiceTable, 6, "PTT", NewValueLabel("F12 — hold to transmit"));
+
+            var testPanel = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                FlowDirection = FlowDirection.LeftToRight,
+                Margin = new Padding(0, 8, 0, 12)
+            };
+
+            testPanel.Controls.Add(new Label
+            {
+                Text = "Offline voice test:",
+                AutoSize = true,
+                Margin = new Padding(0, 7, 10, 0)
+            });
+
+            testPanel.Controls.Add(_testStation);
 
             var root = new FlowLayoutPanel
             {
@@ -108,16 +207,52 @@ namespace OhControl
             root.Controls.Add(title);
             root.Controls.Add(subtitle);
             root.Controls.Add(_connectButton);
-            root.Controls.Add(telemetryTable);
+            root.Controls.Add(testPanel);
+            root.Controls.Add(simTable);
 
+            root.Controls.Add(new Label
+            {
+                Text = "Voice / radio",
+                AutoSize = true,
+                Font = new Font(Font.FontFamily, 16, FontStyle.Bold),
+                Margin = new Padding(0, 20, 0, 4)
+            });
+
+            root.Controls.Add(voiceTable);
             Controls.Add(root);
+        }
+
+        private static TableLayoutPanel CreateTable(int rows)
+        {
+            var table = new TableLayoutPanel
+            {
+                AutoSize = true,
+                ColumnCount = 2,
+                RowCount = rows,
+                Dock = DockStyle.Top,
+                Margin = new Padding(0, 10, 0, 10)
+            };
+
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 680));
+
+            return table;
+        }
+
+        private static Label NewValueLabel(string text)
+        {
+            return new Label
+            {
+                Text = text,
+                AutoSize = true
+            };
         }
 
         private static void AddRow(
             TableLayoutPanel table,
             int row,
             string name,
-            Label value)
+            Control value)
         {
             var nameLabel = new Label
             {
@@ -127,9 +262,7 @@ namespace OhControl
                 Margin = new Padding(0, 8, 12, 8)
             };
 
-            value.AutoSize = true;
             value.Margin = new Padding(0, 8, 0, 8);
-
             table.Controls.Add(nameLabel, 0, row);
             table.Controls.Add(value, 1, row);
         }
@@ -139,58 +272,108 @@ namespace OhControl
             _connectButton.Enabled = false;
             _statusValue.Text = "Connecting…";
             _simConnect.Connect(Handle);
-
-            if (!_simConnect.IsConnected)
-            {
-                // The actual Open notification arrives asynchronously via WndProc.
-                _connectButton.Enabled = false;
-            }
         }
 
         private void OnConnected()
         {
-            _statusValue.Text = "Connected";
-            _statusValue.ForeColor = Color.DarkGreen;
-            _connectButton.Enabled = false;
+            Ui(() =>
+            {
+                _statusValue.Text = "Connected";
+                _statusValue.ForeColor = Color.DarkGreen;
+                _connectButton.Enabled = false;
+            });
+
+            _voice.SetSimulatorConnected(true);
         }
 
         private void OnDisconnected()
         {
-            _statusValue.Text = "Disconnected";
-            _statusValue.ForeColor = Color.DarkRed;
-            _connectButton.Enabled = true;
+            Ui(() =>
+            {
+                _statusValue.Text = "Disconnected";
+                _statusValue.ForeColor = Color.DarkRed;
+                _connectButton.Enabled = true;
+            });
+
+            _voice.SetSimulatorConnected(false);
         }
 
         private void OnTelemetryReceived(TelemetrySnapshot telemetry)
         {
-            _positionValue.Text =
-                telemetry.LatitudeDeg.ToString("F6") + ", " +
-                telemetry.LongitudeDeg.ToString("F6");
+            _voice.UpdateTelemetry(telemetry);
 
-            _altitudeValue.Text = telemetry.AltitudeFt.ToString("F0") + " ft";
-            _headingValue.Text = telemetry.HeadingMagneticDeg.ToString("F0") + "°";
-            _speedValue.Text =
-                telemetry.IndicatedAirspeedKt.ToString("F0") + " kt IAS · " +
-                telemetry.GroundSpeedKt.ToString("F0") + " kt GS";
+            Ui(() =>
+            {
+                _positionValue.Text =
+                    telemetry.LatitudeDeg.ToString("F6") + ", " +
+                    telemetry.LongitudeDeg.ToString("F6");
 
-            _groundValue.Text = telemetry.IsOnGround ? "On ground" : "Airborne";
-            _comValue.Text =
-                telemetry.Com1ActiveMhz.ToString("F3") + " MHz active · " +
-                telemetry.Com1StandbyMhz.ToString("F3") + " MHz standby";
+                _altitudeValue.Text = telemetry.AltitudeFt.ToString("F0") + " ft";
+                _headingValue.Text = telemetry.HeadingMagneticDeg.ToString("F0") + "°";
+
+                _speedValue.Text =
+                    telemetry.IndicatedAirspeedKt.ToString("F0") + " kt IAS · " +
+                    telemetry.GroundSpeedKt.ToString("F0") + " kt GS";
+
+                _groundValue.Text = telemetry.IsOnGround ? "On ground" : "Airborne";
+
+                string ident = string.IsNullOrWhiteSpace(telemetry.Com1ActiveIdent)
+                    ? ""
+                    : " · " + telemetry.Com1ActiveIdent;
+
+                string type = string.IsNullOrWhiteSpace(telemetry.Com1ActiveType)
+                    ? ""
+                    : " [" + telemetry.Com1ActiveType + "]";
+
+                _comValue.Text =
+                    telemetry.Com1ActiveMhz.ToString("F3") + " MHz" +
+                    ident + type +
+                    " · RX " + (telemetry.Com1Receive ? "ON" : "OFF") +
+                    " · TX " + (telemetry.Com1Transmit ? "ON" : "OFF");
+
+                _weatherValue.Text =
+                    telemetry.WindDirectionTrueDeg.ToString("F0") + "°/" +
+                    telemetry.WindSpeedKt.ToString("F0") + " kt · " +
+                    telemetry.AmbientTemperatureC.ToString("F0") + " °C · QNH " +
+                    telemetry.SeaLevelPressureMb.ToString("F0");
+            });
         }
 
         private void OnSimConnectError(string message)
         {
-            _statusValue.Text = "Error";
-            _statusValue.ForeColor = Color.DarkRed;
-            _connectButton.Enabled = true;
+            Ui(() =>
+            {
+                _statusValue.Text = "Disconnected";
+                _statusValue.ForeColor = Color.DarkRed;
+                _connectButton.Enabled = true;
+            });
 
-            MessageBox.Show(
+            _voice.SetSimulatorConnected(false);
+
+            Ui(() => MessageBox.Show(
                 this,
-                message,
+                message + Environment.NewLine + Environment.NewLine +
+                "Voice test mode remains available without MSFS.",
                 "OhControl — SimConnect",
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+                MessageBoxIcon.Information));
+        }
+
+        private void Ui(Action action)
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (InvokeRequired)
+            {
+                BeginInvoke(action);
+            }
+            else
+            {
+                action();
+            }
         }
     }
 }
