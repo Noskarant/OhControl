@@ -177,7 +177,9 @@ namespace OhControl.Atc
 
                 return Speak(
                     spokenCallsign +
-                    ", contactez Bron Tour un un huit décimale un zéro zéro.",
+                    ", contactez Bron Tour " +
+                    AviationFrenchNumbers.Frequency(118.100) +
+                    ".",
                     "Transfert vers 118.100 MHz.");
             }
 
@@ -567,7 +569,9 @@ namespace OhControl.Atc
 
                 return Speak(
                     spokenCallsign +
-                    ", contactez Bron Sol un deux un décimale sept zéro cinq.",
+                    ", contactez Bron Sol " +
+                    AviationFrenchNumbers.Frequency(121.705) +
+                    ".",
                     "Après dégagement, passage sur 121.705 MHz.");
             }
 
