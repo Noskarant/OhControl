@@ -142,7 +142,33 @@ namespace OhControl
             AddField(root, ref row, "Enabled", _multiplayerEnabled);
             AddField(root, ref row, "Supabase project URL", _supabaseUrl);
             AddField(root, ref row, "Publishable key", _supabaseKey);
-            AddField(root, ref row, "Room code", _roomCode);
+
+            var roomPanel = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                FlowDirection = FlowDirection.LeftToRight
+            };
+
+            _roomCode.Width = 250;
+            roomPanel.Controls.Add(_roomCode);
+
+            var generateRoom = new Button
+            {
+                Text = "Generate",
+                AutoSize = true
+            };
+
+            generateRoom.Click += (_, __) =>
+            {
+                _roomCode.Text =
+                    "lfly-" +
+                    Guid.NewGuid()
+                        .ToString("N")
+                        .Substring(0, 10);
+            };
+
+            roomPanel.Controls.Add(generateRoom);
+            AddField(root, ref row, "Room code", roomPanel);
 
             var note = new Label
             {
