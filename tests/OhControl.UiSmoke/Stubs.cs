@@ -44,6 +44,7 @@ namespace OhControl.Configuration
 {
     public sealed class OhControlSettings
     {
+        public bool FirstRunCompleted { get; set; }
         public string ElevenLabsApiKey { get; set; } = "";
         public string ElevenLabsVoiceId { get; set; } = "";
         public string PilotCallsign { get; set; } = "F-GABC";
