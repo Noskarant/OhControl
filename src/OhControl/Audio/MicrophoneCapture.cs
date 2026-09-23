@@ -46,7 +46,7 @@ namespace OhControl.Audio
                 {
                     DeviceNumber = _deviceNumber,
                     WaveFormat = new WaveFormat(16000, 16, 1),
-                    BufferMilliseconds = 40,
+                    BufferMilliseconds = 100,
                     NumberOfBuffers = 3
                 };
 
