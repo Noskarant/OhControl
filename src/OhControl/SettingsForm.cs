@@ -17,6 +17,8 @@ namespace OhControl
         private readonly TextBox _aircraftType = new TextBox();
         private readonly TextBox _elevenKey = new TextBox();
         private readonly TextBox _elevenVoice = new TextBox();
+        private readonly ComboBox _inputDevice = new ComboBox();
+        private readonly ComboBox _outputDevice = new ComboBox();
 
         private readonly Label _keyboardPtt = new Label();
         private readonly Label _joystickPtt = new Label();
@@ -55,6 +57,8 @@ namespace OhControl
             _elevenVoice.Text = _settings.ElevenLabsVoiceId;
             _elevenKey.UseSystemPasswordChar = true;
 
+            PopulateAudioDevices();
+
             _keyboardPtt.Text = string.IsNullOrWhiteSpace(_capturedKeyboardKey)
                 ? "None"
                 : _capturedKeyboardKey;
@@ -91,6 +95,10 @@ namespace OhControl
             AddSection(root, ref row, "ElevenLabs");
             AddField(root, ref row, "API key", _elevenKey);
             AddField(root, ref row, "Voice ID", _elevenVoice);
+
+            AddSection(root, ref row, "Audio");
+            AddField(root, ref row, "Microphone", _inputDevice);
+            AddField(root, ref row, "Radio output", _outputDevice);
 
             AddSection(root, ref row, "Push-to-talk");
 
@@ -205,6 +213,53 @@ namespace OhControl
             Controls.Add(root);
         }
 
+        private void PopulateAudioDevices()
+        {
+            _inputDevice.DropDownStyle =
+                ComboBoxStyle.DropDownList;
+
+            _outputDevice.DropDownStyle =
+                ComboBoxStyle.DropDownList;
+
+            foreach (AudioDeviceInfo device
+                in AudioDeviceCatalog.GetInputDevices())
+            {
+                _inputDevice.Items.Add(device);
+
+                if (device.DeviceNumber ==
+                    _settings.MicrophoneDeviceNumber)
+                {
+                    _inputDevice.SelectedItem =
+                        device;
+                }
+            }
+
+            foreach (AudioDeviceInfo device
+                in AudioDeviceCatalog.GetOutputDevices())
+            {
+                _outputDevice.Items.Add(device);
+
+                if (device.DeviceNumber ==
+                    _settings.OutputDeviceNumber)
+                {
+                    _outputDevice.SelectedItem =
+                        device;
+                }
+            }
+
+            if (_inputDevice.SelectedIndex < 0 &&
+                _inputDevice.Items.Count > 0)
+            {
+                _inputDevice.SelectedIndex = 0;
+            }
+
+            if (_outputDevice.SelectedIndex < 0 &&
+                _outputDevice.Items.Count > 0)
+            {
+                _outputDevice.SelectedIndex = 0;
+            }
+        }
+
         private void CaptureKeyboardKey()
         {
             _keyboardPtt.Text = "Press a key…";
@@ -266,6 +321,18 @@ namespace OhControl
             _settings.AircraftType = _aircraftType.Text.Trim();
             _settings.ElevenLabsApiKey = _elevenKey.Text.Trim();
             _settings.ElevenLabsVoiceId = _elevenVoice.Text.Trim();
+
+            if (_inputDevice.SelectedItem is AudioDeviceInfo input)
+            {
+                _settings.MicrophoneDeviceNumber =
+                    input.DeviceNumber;
+            }
+
+            if (_outputDevice.SelectedItem is AudioDeviceInfo output)
+            {
+                _settings.OutputDeviceNumber =
+                    output.DeviceNumber;
+            }
 
             _settings.PttKeyboardKey = _capturedKeyboardKey;
             _settings.PttJoystickDeviceId = _capturedJoystickDeviceId;
