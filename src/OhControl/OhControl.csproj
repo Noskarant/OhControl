@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>OhControl</RootNamespace>
+    <AssemblyName>OhControl</AssemblyName>
+
+    <MSFS2024SdkPath Condition="'$(MSFS2024SdkPath)' == '' and '$(MSFS2024_SDK)' != ''">$(MSFS2024_SDK)</MSFS2024SdkPath>
+    <MSFS2024SdkPath Condition="'$(MSFS2024SdkPath)' == ''">C:\MSFS 2024 SDK</MSFS2024SdkPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.FlightSimulator.SimConnect">
+      <HintPath>$(MSFS2024SdkPath)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="CheckSimConnectSdk" BeforeTargets="ResolveReferences">
+    <Error
+      Condition="!Exists('$(MSFS2024SdkPath)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll')"
+      Text="MSFS 2024 SimConnect managed library not found. Install the MSFS 2024 SDK or set MSFS2024_SDK / MSFS2024SdkPath." />
+  </Target>
+</Project>
