@@ -129,11 +129,18 @@ namespace OhControl.Multiplayer
                         joinPayload),
                     _sessionCancellation.Token).ConfigureAwait(false);
 
+                ClientWebSocket connectedSocket = _socket;
+                CancellationToken sessionToken = _sessionCancellation.Token;
+
                 _receiveTask = Task.Run(
-                    () => ReceiveLoopAsync(_sessionCancellation.Token));
+                    () => ReceiveLoopAsync(
+                        connectedSocket,
+                        sessionToken));
 
                 _heartbeatTask = Task.Run(
-                    () => HeartbeatLoopAsync(_sessionCancellation.Token));
+                    () => HeartbeatLoopAsync(
+                        connectedSocket,
+                        sessionToken));
 
                 _telemetryTimer = new Timer(
                     async _ => await PublishTelemetrySafeAsync(),
@@ -357,7 +364,9 @@ namespace OhControl.Multiplayer
             }
         }
 
-        private async Task HeartbeatLoopAsync(CancellationToken token)
+        private async Task HeartbeatLoopAsync(
+            ClientWebSocket socket,
+            CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
@@ -371,15 +380,20 @@ namespace OhControl.Multiplayer
                         "phoenix",
                         "heartbeat",
                         new JObject()),
-                    token).ConfigureAwait(false);
+                    token,
+                    socket).ConfigureAwait(false);
             }
         }
 
-        private async Task ReceiveLoopAsync(CancellationToken token)
+        private async Task ReceiveLoopAsync(
+            ClientWebSocket socket,
+            CancellationToken token)
         {
             var buffer = new byte[16384];
 
-            while (!token.IsCancellationRequested && IsSocketOpen())
+            while (!token.IsCancellationRequested &&
+                   socket != null &&
+                   socket.State == WebSocketState.Open)
             {
                 using (var message = new MemoryStream())
                 {
@@ -387,7 +401,7 @@ namespace OhControl.Multiplayer
 
                     do
                     {
-                        result = await _socket.ReceiveAsync(
+                        result = await socket.ReceiveAsync(
                             new ArraySegment<byte>(buffer),
                             token).ConfigureAwait(false);
 
