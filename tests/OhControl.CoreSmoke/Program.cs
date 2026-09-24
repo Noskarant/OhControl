@@ -11,6 +11,7 @@ internal static class Program
         try
         {
             VerifyGroundProfile();
+            VerifyIdentifierSpeech();
             VerifyReportingPoints();
             VerifyAtcFlow();
 
@@ -33,6 +34,17 @@ internal static class Program
         Expect(
             LflyGroundProfile.ForRunway("34").FullLengthHoldingPoint == "A4",
             "RWY 34 full-length holding point must be A4.");
+    }
+
+    private static void VerifyIdentifierSpeech()
+    {
+        Expect(
+            AviationFrenchNumbers.Identifier("A4") == "Alpha quatre",
+            "A4 must be spoken as Alpha quatre.");
+
+        Expect(
+            AviationFrenchNumbers.Identifier("TN2") == "Tango November deux",
+            "Compound taxiway identifiers must use ICAO spelling and French digits.");
     }
 
     private static void VerifyReportingPoints()
@@ -160,6 +172,38 @@ internal static class Program
             ready.Text,
             "Bron Tour",
             "Ground should transfer a ready aircraft to Tower.");
+
+        var spokenReadbackEngine =
+            new AtcEngine(atis);
+
+        telemetry.WindDirectionTrueDeg = 340;
+        telemetry.Com1ActiveMhz = 121.705;
+
+        AtcResponse taxi34 =
+            spokenReadbackEngine.Handle(
+                ground,
+                "Bron Sol F-GABC demande roulage pour tours de piste",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            taxi34.Text,
+            "Alpha quatre",
+            "RWY 34 taxi clearance must speak A4 as Alpha quatre.");
+
+        AtcResponse spokenTaxiReadback =
+            spokenReadbackEngine.Handle(
+                ground,
+                "Je roule point d'attente Alpha quatre piste 34 F-GABC",
+                "F-GABC",
+                telemetry);
+
+        Expect(
+            string.IsNullOrWhiteSpace(spokenTaxiReadback.Text),
+            "Spoken readback Alpha quatre must be accepted as A4.");
+
+        telemetry.WindDirectionTrueDeg = 160;
+        telemetry.Com1ActiveMhz = 118.100;
 
         telemetry.Com1ActiveMhz = 118.100;
 
