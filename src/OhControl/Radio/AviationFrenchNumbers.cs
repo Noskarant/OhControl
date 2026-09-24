@@ -22,6 +22,37 @@ namespace OhControl.Radio
                 ['9'] = "neuf"
             };
 
+        private static readonly IReadOnlyDictionary<char, string> IdentifierAlphabet =
+            new Dictionary<char, string>
+            {
+                ['A'] = "Alpha",
+                ['B'] = "Bravo",
+                ['C'] = "Charlie",
+                ['D'] = "Delta",
+                ['E'] = "Echo",
+                ['F'] = "Foxtrot",
+                ['G'] = "Golf",
+                ['H'] = "Hotel",
+                ['I'] = "India",
+                ['J'] = "Juliett",
+                ['K'] = "Kilo",
+                ['L'] = "Lima",
+                ['M'] = "Mike",
+                ['N'] = "November",
+                ['O'] = "Oscar",
+                ['P'] = "Papa",
+                ['Q'] = "Quebec",
+                ['R'] = "Romeo",
+                ['S'] = "Sierra",
+                ['T'] = "Tango",
+                ['U'] = "Uniform",
+                ['V'] = "Victor",
+                ['W'] = "Whiskey",
+                ['X'] = "X ray",
+                ['Y'] = "Yankee",
+                ['Z'] = "Zulu"
+            };
+
         public static string DigitsOnly(
             int value,
             int minimumDigits = 0)
@@ -54,6 +85,35 @@ namespace OhControl.Radio
                     .Where(char.IsDigit)
                     .Select(
                         c => Digits[c]));
+        }
+
+        public static string Identifier(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "";
+            }
+
+            var words =
+                value
+                    .ToUpperInvariant()
+                    .Where(char.IsLetterOrDigit)
+                    .Select(
+                        c =>
+                        {
+                            if (char.IsDigit(c))
+                            {
+                                return Digits[c];
+                            }
+
+                            return IdentifierAlphabet.TryGetValue(
+                                c,
+                                out string word)
+                                ? word
+                                : c.ToString();
+                        });
+
+            return string.Join(" ", words);
         }
 
         public static string Frequency(
