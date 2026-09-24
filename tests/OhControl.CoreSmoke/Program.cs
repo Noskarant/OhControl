@@ -52,17 +52,17 @@ internal static class Program
     {
         Expect(
             AviationFrenchNumbers.Frequency(118.100) ==
-            "un, un, huit décimale un",
+            "unité, unité, huit décimale unité",
             "118.100 must keep both leading 'un' words and omit trailing double zero.");
 
         Expect(
             AviationFrenchNumbers.Frequency(121.705) ==
-            "un, deux, un décimale sept, zéro, cinq",
+            "unité, deux, unité décimale sept, zéro, cinq",
             "121.705 must be spoken digit by digit.");
 
         Expect(
             AviationFrenchNumbers.Frequency(128.130) ==
-            "un, deux, huit décimale un, trois, zéro",
+            "unité, deux, huit décimale unité, trois, zéro",
             "128.130 must preserve all three decimal digits.");
     }
 
@@ -199,10 +199,32 @@ internal static class Program
                 StringComparison.OrdinalIgnoreCase) < 0,
             "Repeated repeat requests must not recursively repeat the previous repeat wrapper.");
 
+        var acknowledgementEngine =
+            new AtcEngine(atis);
+
+        AtcResponse acknowledgementTaxi =
+            acknowledgementEngine.Handle(
+                ground,
+                "Bron Sol F-GABC demande roulage pour tours de piste",
+                "F-GABC",
+                telemetry);
+
+        AtcResponse bareAcknowledgement =
+            acknowledgementEngine.Handle(
+                ground,
+                "F-GABC bien reçu",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            bareAcknowledgement.Text,
+            "collationnez",
+            "A bare acknowledgement must not satisfy a mandatory taxi readback.");
+
         AtcResponse taxiReadback =
             engine.Handle(
                 ground,
-                "Je roule point d'attente A1 piste 16 F-GABC",
+                "Je roule point d'attente A1 piste 16 QNH 1018 F-GABC",
                 "F-GABC",
                 telemetry);
 
@@ -221,6 +243,18 @@ internal static class Program
             ready.Text,
             "Bron Tour",
             "Ground should transfer a ready aircraft to Tower.");
+
+        AtcResponse frequencyReadback =
+            engine.Handle(
+                ground,
+                "unité unité huit décimale unité F-GABC au revoir",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            frequencyReadback.Text,
+            "au revoir",
+            "Frequency readback with goodbye should close the Ground exchange naturally.");
 
         var spokenReadbackEngine =
             new AtcEngine(atis);
@@ -243,7 +277,7 @@ internal static class Program
         AtcResponse spokenTaxiReadback =
             spokenReadbackEngine.Handle(
                 ground,
-                "Je roule point d'attente Alpha quatre piste 34 F-GABC",
+                "Je roule point d'attente Alpha quatre piste trois quatre QNH 1018 F-GABC",
                 "F-GABC",
                 telemetry);
 
@@ -324,6 +358,33 @@ internal static class Program
             arrival.Text,
             "intégrez vent arrière",
             "Arrival from a published reporting point should receive a circuit integration.");
+
+        AtcResponse reportAcknowledgement =
+            engine.Handle(
+                tower,
+                "F-GABC je rappelle vent arrière",
+                "F-GABC",
+                telemetry);
+
+        Expect(
+            string.IsNullOrWhiteSpace(
+                reportAcknowledgement.Text),
+            "Report acknowledgement must not be mistaken for an actual downwind report.");
+
+        var goodbyeEngine =
+            new AtcEngine(atis);
+
+        AtcResponse goodbye =
+            goodbyeEngine.Handle(
+                tower,
+                "F-GABC merci au revoir",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            goodbye.Text,
+            "au revoir",
+            "ATC should respond naturally to a pilot goodbye.");
     }
 
     private static void Expect(
