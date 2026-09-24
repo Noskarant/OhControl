@@ -507,6 +507,20 @@ namespace OhControl
                 (_, __) =>
                     ResizeConversationEntries();
 
+            _conversationLog.Layout +=
+                (_, __) =>
+                {
+                    foreach (Control entry in
+                             _conversationEntries)
+                    {
+                        if (entry.Width <= 40)
+                        {
+                            ResizeConversationEntry(
+                                entry);
+                        }
+                    }
+                };
+
             layout.Controls.Add(
                 _conversationLog,
                 0,
@@ -535,10 +549,14 @@ namespace OhControl
                     text.Trim(),
                     accent);
 
+            _conversationLog.SuspendLayout();
+
             _conversationEntries.Add(entry);
             _conversationLog.Controls.Add(entry);
 
             ResizeConversationEntry(entry);
+
+            _conversationLog.ResumeLayout(true);
 
             if (stayAtBottom ||
                 _conversationEntries.Count <= 1)
@@ -555,13 +573,10 @@ namespace OhControl
         {
             var panel = new Panel
             {
-                AutoSize = true,
-                AutoSizeMode =
-                    AutoSizeMode.GrowAndShrink,
+                AutoSize = false,
+                Height = 72,
                 BackColor =
                     OhControlTheme.SurfaceRaised,
-                Padding =
-                    new Padding(14, 11, 14, 12),
                 Margin =
                     new Padding(0, 0, 0, 8)
             };
@@ -569,30 +584,9 @@ namespace OhControl
             var marker = new Panel
             {
                 Dock = DockStyle.Left,
-                Width = 3,
+                Width = 4,
                 BackColor = accent
             };
-
-            var body = new TableLayoutPanel
-            {
-                AutoSize = true,
-                AutoSizeMode =
-                    AutoSizeMode.GrowAndShrink,
-                Dock = DockStyle.Top,
-                ColumnCount = 1,
-                RowCount = 2,
-                BackColor = Color.Transparent,
-                Padding = new Padding(9, 0, 0, 0)
-            };
-
-            body.ColumnStyles.Add(
-                new ColumnStyle(SizeType.Percent, 100f));
-
-            body.RowStyles.Add(
-                new RowStyle(SizeType.AutoSize));
-
-            body.RowStyles.Add(
-                new RowStyle(SizeType.AutoSize));
 
             var caption = new Label
             {
@@ -603,32 +597,25 @@ namespace OhControl
                         7.8f,
                         FontStyle.Bold),
                 ForeColor = accent,
-                Margin = new Padding(0, 0, 0, 5)
+                Location = new Point(18, 10)
             };
 
             var value = new Label
             {
                 Text = text,
-                AutoSize = true,
+                AutoSize = false,
                 Font =
                     OhControlTheme.Font(10.4f),
                 ForeColor =
                     OhControlTheme.TextPrimary,
-                Margin = new Padding(0)
+                Location = new Point(18, 32),
+                TextAlign =
+                    ContentAlignment.TopLeft
             };
 
-            body.Controls.Add(
-                caption,
-                0,
-                0);
-
-            body.Controls.Add(
-                value,
-                0,
-                1);
-
             panel.Tag = value;
-            panel.Controls.Add(body);
+            panel.Controls.Add(value);
+            panel.Controls.Add(caption);
             panel.Controls.Add(marker);
 
             return panel;
@@ -636,11 +623,21 @@ namespace OhControl
 
         private void ResizeConversationEntries()
         {
+            if (_conversationLog.IsDisposed)
+            {
+                return;
+            }
+
+            _conversationLog.SuspendLayout();
+
             foreach (Control entry in
                      _conversationEntries.ToArray())
             {
                 ResizeConversationEntry(entry);
             }
+
+            _conversationLog.ResumeLayout(true);
+            _conversationLog.PerformLayout();
         }
 
         private void ResizeConversationEntry(
@@ -653,33 +650,51 @@ namespace OhControl
             }
 
             int scrollbarAllowance =
-                _conversationLog.VerticalScroll.Visible
-                    ? SystemInformation
-                        .VerticalScrollBarWidth
-                    : 0;
+                SystemInformation
+                    .VerticalScrollBarWidth;
 
             int width =
                 Math.Max(
-                    180,
+                    220,
                     _conversationLog.ClientSize.Width -
                     _conversationLog.Padding.Horizontal -
                     scrollbarAllowance -
-                    4);
+                    6);
 
             entry.Width = width;
 
             var value =
                 entry.Tag as Label;
 
-            if (value != null)
+            if (value == null)
             {
-                value.MaximumSize =
-                    new Size(
-                        Math.Max(
-                            120,
-                            width - 48),
-                        0);
+                return;
             }
+
+            int textWidth =
+                Math.Max(
+                    150,
+                    width - 36);
+
+            Size preferred =
+                value.GetPreferredSize(
+                    new Size(
+                        textWidth,
+                        0));
+
+            value.Size =
+                new Size(
+                    textWidth,
+                    Math.Max(
+                        22,
+                        preferred.Height));
+
+            entry.Height =
+                Math.Max(
+                    68,
+                    value.Top +
+                    value.Height +
+                    12);
         }
 
         private bool IsConversationNearBottom()
