@@ -16,7 +16,7 @@ namespace OhControl.ElevenLabs
     public sealed class ElevenLabsClient : IDisposable
     {
         private const string TtsLanguageCode = "fr";
-        private const string TtsCacheVersion = "fr-radio-v2";
+        private const string TtsCacheVersion = "fr-radio-v3-controller";
         private readonly HttpClient _httpClient = new HttpClient();
         private readonly string _cacheDirectory;
         private OhControlSettings _settings;
@@ -134,11 +134,11 @@ namespace OhControl.ElevenLabs
                 ["language_code"] = TtsLanguageCode,
                 ["voice_settings"] = new JObject
                 {
-                    ["stability"] = 0.48,
-                    ["similarity_boost"] = 0.78,
+                    ["stability"] = 0.64,
+                    ["similarity_boost"] = 0.84,
                     ["style"] = 0.0,
                     ["use_speaker_boost"] = true,
-                    ["speed"] = 1.0
+                    ["speed"] = 1.04
                 }
             };
 
