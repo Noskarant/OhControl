@@ -840,6 +840,84 @@ namespace OhControl.Atc
                 "Transmission comprise, mais scénario non classé.");
         }
 
+        public AtcResponse BuildScheduledFollowUp(
+            string callsign,
+            RadioStation station,
+            TelemetrySnapshot telemetry)
+        {
+            if (station == null ||
+                station.Kind != RadioStationKind.Tower ||
+                GetState(callsign) !=
+                TrainingState.LineUpAndWait)
+            {
+                return null;
+            }
+
+            AtisBroadcast atis =
+                _atisService.Build(telemetry);
+
+            MultiplayerPlayerState blockingTraffic =
+                FindTraffic(
+                    atis.Runway,
+                    station.FrequencyMhz,
+                    "Final",
+                    "Runway");
+
+            string spokenCallsign =
+                AviationCallsign.ToSpeech(callsign);
+
+            if (blockingTraffic != null &&
+                blockingTraffic.DistanceToThresholdMeters <
+                3500)
+            {
+                AtcResponse hold =
+                    Speak(
+                        spokenCallsign +
+                        ", maintenez position, trafic " +
+                        AviationCallsign.ToSpeech(
+                            blockingTraffic.Callsign) +
+                        " en finale.",
+                        "Départ toujours retenu pour trafic ; nouvel appel contrôleur programmé.");
+
+                hold.ControllerFollowUpDelaySeconds = 12;
+
+                RememberAtcTransmission(
+                    callsign,
+                    station,
+                    hold);
+
+                return hold;
+            }
+
+            SetState(
+                callsign,
+                TrainingState.ClearedForTakeoff);
+
+            SetPendingReadback(
+                callsign,
+                "takeoff",
+                atis.Runway,
+                null);
+
+            AtcResponse clearance =
+                Speak(
+                    spokenCallsign +
+                    ", piste " +
+                    AviationFrenchNumbers.Runway(
+                        atis.Runway) +
+                    ", autorisé décollage, vent " +
+                    WindSpeech(telemetry) +
+                    ".",
+                    "Clairance de décollage émise automatiquement après l'attente.");
+
+            RememberAtcTransmission(
+                callsign,
+                station,
+                clearance);
+
+            return clearance;
+        }
+
         private AtcResponse TryHandleReadback(
             string callsignKey,
             string spokenCallsign,
@@ -1014,7 +1092,14 @@ namespace OhControl.Atc
 
             if (pending.Kind == "lineup_wait")
             {
+                bool runwayMentioned =
+                    ContainsAny(
+                        text,
+                        "piste",
+                        "runway");
+
                 bool runwayOk =
+                    !runwayMentioned ||
                     ContainsRunway(
                         text,
                         pending.Runway);
@@ -1023,12 +1108,16 @@ namespace OhControl.Atc
                     ContainsAny(
                         text,
                         "m aligne",
+                        "on s aligne",
+                        "nous nous alignons",
                         "alignons",
                         "aligne");
 
                 bool waitOk =
                     ContainsAny(
                         text,
+                        "on attend",
+                        "attend",
                         "attends",
                         "attendons",
                         "j attends");
@@ -1051,44 +1140,16 @@ namespace OhControl.Atc
                 _pendingReadbacks.Remove(
                     pendingKey);
 
-                MultiplayerPlayerState finalTraffic =
-                    FindTraffic(
-                        pending.Runway,
-                        station.FrequencyMhz,
-                        "Final");
-
-                if (finalTraffic != null &&
-                    finalTraffic.DistanceToThresholdMeters <
-                    3500)
-                {
-                    return Speak(
-                        spokenCallsign +
-                        ", maintenez position, trafic " +
-                        AviationCallsign.ToSpeech(
-                            finalTraffic.Callsign) +
-                        " en finale.",
-                        "Alignement collationné ; départ retenu pour trafic.");
-                }
-
                 SetState(
                     callsignKey,
-                    TrainingState.ClearedForTakeoff);
+                    TrainingState.LineUpAndWait);
 
-                SetPendingReadback(
-                    callsignKey,
-                    "takeoff",
-                    pending.Runway,
-                    null);
-
-                return Speak(
-                    spokenCallsign +
-                    ", piste " +
-                    AviationFrenchNumbers.Runway(
-                        pending.Runway) +
-                    ", autorisé décollage, vent " +
-                    WindSpeech(telemetry) +
-                    ".",
-                    "Alignement/attente correctement collationné ; clairance de décollage délivrée.");
+                return new AtcResponse
+                {
+                    Feedback =
+                        "Alignement et attente correctement collationnés. Le contrôleur vous rappellera.",
+                    ControllerFollowUpDelaySeconds = 18
+                };
             }
 
             if (pending.Kind == "takeoff")
