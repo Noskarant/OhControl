@@ -44,11 +44,16 @@ function Ensure-SimConnectBesideExe {
         return
     }
 
-    $source = Join-Path $SdkRoot "SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll"
-    $destination = Join-Path (Split-Path -Parent $Executable) "Microsoft.FlightSimulator.SimConnect.dll"
+    $managedSource = Join-Path $SdkRoot "SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll"
+    $nativeSource = Join-Path $SdkRoot "SimConnect SDK\lib\SimConnect.dll"
+    $outputDir = Split-Path -Parent $Executable
 
-    if (Test-Path $source) {
-        Copy-Item -Path $source -Destination $destination -Force
+    if (Test-Path $managedSource) {
+        Copy-Item -Path $managedSource -Destination (Join-Path $outputDir "Microsoft.FlightSimulator.SimConnect.dll") -Force
+    }
+
+    if (Test-Path $nativeSource) {
+        Copy-Item -Path $nativeSource -Destination (Join-Path $outputDir "SimConnect.dll") -Force
     }
 }
 
