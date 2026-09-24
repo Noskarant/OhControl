@@ -43,11 +43,8 @@ namespace OhControl
         private readonly Label _controllerTextValue = new Label();
         private readonly Label _feedbackValue = new Label();
 
-        private readonly FlowLayoutPanel _conversationLog =
-            new FlowLayoutPanel();
-
-        private readonly List<Control> _conversationEntries =
-            new List<Control>();
+        private readonly RichTextBox _conversationLog =
+            new RichTextBox();
 
         private readonly Label _voiceConfigValue = new Label();
         private readonly Label _multiplayerStatusValue = new Label();
@@ -474,7 +471,7 @@ namespace OhControl
             var hint = new Label
             {
                 Text =
-                    "Historique de la session · molette pour remonter les échanges",
+                    "Historique complet · molette ou barre de défilement pour remonter",
                 AutoSize = true,
                 ForeColor = OhControlTheme.TextSecondary,
                 Font = OhControlTheme.Font(8.4f),
@@ -487,39 +484,27 @@ namespace OhControl
                 1);
 
             _conversationLog.Dock = DockStyle.Fill;
-            _conversationLog.FlowDirection =
-                FlowDirection.TopDown;
+            _conversationLog.ReadOnly = true;
+            _conversationLog.BorderStyle =
+                BorderStyle.None;
 
-            _conversationLog.WrapContents = false;
-            _conversationLog.AutoScroll = true;
             _conversationLog.BackColor =
                 OhControlTheme.Background;
 
-            _conversationLog.Padding =
-                new Padding(0, 0, 4, 4);
+            _conversationLog.ForeColor =
+                OhControlTheme.TextPrimary;
 
-            _conversationLog.Margin =
-                new Padding(0);
+            _conversationLog.Font =
+                OhControlTheme.Font(10.5f);
 
-            _conversationLog.TabStop = true;
+            _conversationLog.ScrollBars =
+                RichTextBoxScrollBars.Vertical;
 
-            _conversationLog.ClientSizeChanged +=
-                (_, __) =>
-                    ResizeConversationEntries();
-
-            _conversationLog.Layout +=
-                (_, __) =>
-                {
-                    foreach (Control entry in
-                             _conversationEntries)
-                    {
-                        if (entry.Width <= 40)
-                        {
-                            ResizeConversationEntry(
-                                entry);
-                        }
-                    }
-                };
+            _conversationLog.WordWrap = true;
+            _conversationLog.DetectUrls = false;
+            _conversationLog.HideSelection = false;
+            _conversationLog.TabStop = false;
+            _conversationLog.Margin = new Padding(0);
 
             layout.Controls.Add(
                 _conversationLog,
@@ -543,180 +528,85 @@ namespace OhControl
             bool stayAtBottom =
                 IsConversationNearBottom();
 
-            var entry =
-                CreateConversationEntry(
-                    title,
-                    text.Trim(),
-                    accent);
-
-            _conversationLog.SuspendLayout();
-
-            _conversationEntries.Add(entry);
-            _conversationLog.Controls.Add(entry);
-
-            ResizeConversationEntry(entry);
-
-            _conversationLog.ResumeLayout(true);
-
-            if (stayAtBottom ||
-                _conversationEntries.Count <= 1)
+            if (_conversationLog.TextLength > 0)
             {
-                _conversationLog.ScrollControlIntoView(
-                    entry);
-            }
-        }
-
-        private Panel CreateConversationEntry(
-            string title,
-            string text,
-            Color accent)
-        {
-            var panel = new Panel
-            {
-                AutoSize = false,
-                Height = 72,
-                BackColor =
-                    OhControlTheme.SurfaceRaised,
-                Margin =
-                    new Padding(0, 0, 0, 8)
-            };
-
-            var marker = new Panel
-            {
-                Dock = DockStyle.Left,
-                Width = 4,
-                BackColor = accent
-            };
-
-            var caption = new Label
-            {
-                Text = title,
-                AutoSize = true,
-                Font =
-                    OhControlTheme.Font(
-                        7.8f,
-                        FontStyle.Bold),
-                ForeColor = accent,
-                Location = new Point(18, 10)
-            };
-
-            var value = new Label
-            {
-                Text = text,
-                AutoSize = false,
-                Font =
-                    OhControlTheme.Font(10.4f),
-                ForeColor =
+                AppendConversationText(
+                    Environment.NewLine +
+                    Environment.NewLine,
                     OhControlTheme.TextPrimary,
-                Location = new Point(18, 32),
-                TextAlign =
-                    ContentAlignment.TopLeft
-            };
+                    false);
+            }
 
-            panel.Tag = value;
-            panel.Controls.Add(value);
-            panel.Controls.Add(caption);
-            panel.Controls.Add(marker);
+            string timestamp =
+                DateTime.Now.ToString("HH:mm:ss");
 
-            return panel;
+            AppendConversationText(
+                title + "  ·  " + timestamp,
+                accent,
+                true);
+
+            AppendConversationText(
+                Environment.NewLine +
+                text.Trim(),
+                OhControlTheme.TextPrimary,
+                false);
+
+            if (stayAtBottom)
+            {
+                _conversationLog.SelectionStart =
+                    _conversationLog.TextLength;
+
+                _conversationLog.SelectionLength = 0;
+                _conversationLog.ScrollToCaret();
+            }
         }
 
-        private void ResizeConversationEntries()
+        private void AppendConversationText(
+            string text,
+            Color color,
+            bool bold)
         {
-            if (_conversationLog.IsDisposed)
+            _conversationLog.SelectionStart =
+                _conversationLog.TextLength;
+
+            _conversationLog.SelectionLength = 0;
+            _conversationLog.SelectionColor = color;
+
+            using (Font font =
+                OhControlTheme.Font(
+                    bold ? 8.3f : 10.5f,
+                    bold
+                        ? FontStyle.Bold
+                        : FontStyle.Regular))
             {
-                return;
+                _conversationLog.SelectionFont = font;
+                _conversationLog.AppendText(text);
             }
 
-            _conversationLog.SuspendLayout();
-
-            foreach (Control entry in
-                     _conversationEntries.ToArray())
-            {
-                ResizeConversationEntry(entry);
-            }
-
-            _conversationLog.ResumeLayout(true);
-            _conversationLog.PerformLayout();
-        }
-
-        private void ResizeConversationEntry(
-            Control entry)
-        {
-            if (entry == null ||
-                entry.IsDisposed)
-            {
-                return;
-            }
-
-            int scrollbarAllowance =
-                SystemInformation
-                    .VerticalScrollBarWidth;
-
-            int width =
-                Math.Max(
-                    220,
-                    _conversationLog.ClientSize.Width -
-                    _conversationLog.Padding.Horizontal -
-                    scrollbarAllowance -
-                    6);
-
-            entry.Width = width;
-
-            var value =
-                entry.Tag as Label;
-
-            if (value == null)
-            {
-                return;
-            }
-
-            int textWidth =
-                Math.Max(
-                    150,
-                    width - 36);
-
-            Size preferred =
-                value.GetPreferredSize(
-                    new Size(
-                        textWidth,
-                        0));
-
-            value.Size =
-                new Size(
-                    textWidth,
-                    Math.Max(
-                        22,
-                        preferred.Height));
-
-            entry.Height =
-                Math.Max(
-                    68,
-                    value.Top +
-                    value.Height +
-                    12);
+            _conversationLog.SelectionColor =
+                OhControlTheme.TextPrimary;
         }
 
         private bool IsConversationNearBottom()
         {
-            if (!_conversationLog.AutoScroll)
+            if (_conversationLog.TextLength == 0 ||
+                _conversationLog.ClientSize.Height <= 0)
             {
                 return true;
             }
 
-            int visibleHeight =
-                _conversationLog.ClientSize.Height;
+            int lastVisibleChar =
+                _conversationLog.GetCharIndexFromPosition(
+                    new Point(
+                        Math.Max(
+                            1,
+                            _conversationLog.ClientSize.Width - 8),
+                        Math.Max(
+                            1,
+                            _conversationLog.ClientSize.Height - 8)));
 
-            int contentHeight =
-                _conversationLog.DisplayRectangle.Height;
-
-            int scrollTop =
-                Math.Abs(
-                    _conversationLog.AutoScrollPosition.Y);
-
-            return contentHeight <= visibleHeight ||
-                   contentHeight -
-                   (scrollTop + visibleHeight) <= 48;
+            return lastVisibleChar >=
+                   _conversationLog.TextLength - 8;
         }
 
         private Control BuildTrafficCard()
