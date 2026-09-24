@@ -459,6 +459,13 @@ namespace OhControl.Voice
                 return;
             }
 
+            if (_transmissionGate.CurrentCount == 0)
+            {
+                StatusChanged?.Invoke(
+                    "Fréquence occupée par le contrôleur — attendez la fin de la transmission.");
+                return;
+            }
+
             try
             {
                 _collisionDetected = IsCurrentFrequencyBusy();
@@ -498,16 +505,30 @@ namespace OhControl.Voice
                 false,
                 CurrentFrequencyMhz);
 
+            byte[] wav;
+
+            try
+            {
+                wav = await _microphone.StopAsync()
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                StatusChanged?.Invoke(
+                    "Micro : " + ex.Message);
+                return;
+            }
+
             if (!await _transmissionGate.WaitAsync(0)
                 .ConfigureAwait(false))
             {
+                StatusChanged?.Invoke(
+                    "Transmission non traitée : le contrôleur émettait déjà.");
                 return;
             }
 
             try
             {
-                byte[] wav = await _microphone.StopAsync()
-                    .ConfigureAwait(false);
 
                 if (_collisionDetected)
                 {
@@ -541,7 +562,9 @@ namespace OhControl.Voice
                 if (string.IsNullOrWhiteSpace(transcript))
                 {
                     StatusChanged?.Invoke(
-                        "Aucune parole reconnue.");
+                        "Aucune parole reconnue — enregistrement reçu (" +
+                        wav.Length +
+                        " octets).");
                     return;
                 }
 
