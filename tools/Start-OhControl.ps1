@@ -108,7 +108,22 @@ $outputCandidates = @(
 
 $exe = $outputCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-if ($Rebuild -or -not $exe) {
+$sourceChanged = $false
+
+if ($exe) {
+    $exeTime = (Get-Item $exe).LastWriteTimeUtc
+
+    $newerSource = Get-ChildItem -Path (Join-Path $root "src\OhControl") -Recurse -File |
+        Where-Object {
+            ($_.Extension -eq ".cs" -or $_.Extension -eq ".csproj") -and
+            $_.LastWriteTimeUtc -gt $exeTime
+        } |
+        Select-Object -First 1
+
+    $sourceChanged = $null -ne $newerSource
+}
+
+if ($Rebuild -or -not $exe -or $sourceChanged) {
     Write-Host "Preparation d'OhControl..." -ForegroundColor Cyan
 
     $dotnet = Get-UsableDotnet
