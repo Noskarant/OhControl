@@ -34,6 +34,24 @@ function Find-MsfsSdk {
     return $null
 }
 
+function Ensure-SimConnectBesideExe {
+    param(
+        [string]$Executable,
+        [string]$SdkRoot
+    )
+
+    if (-not $Executable -or -not (Test-Path $Executable)) {
+        return
+    }
+
+    $source = Join-Path $SdkRoot "SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll"
+    $destination = Join-Path (Split-Path -Parent $Executable) "Microsoft.FlightSimulator.SimConnect.dll"
+
+    if (Test-Path $source) {
+        Copy-Item -Path $source -Destination $destination -Force
+    }
+}
+
 function Get-UsableDotnet {
     if (Test-Path $localDotnet) {
         return $localDotnet
@@ -154,6 +172,9 @@ if (-not $exe) {
     exit 5
 }
 
+Ensure-SimConnectBesideExe -Executable $exe -SdkRoot $sdk
+
+Write-Host "SimConnect local : OK" -ForegroundColor Green
 Write-Host "OhControl : pret" -ForegroundColor Green
 Write-Host "Lancement..." -ForegroundColor Green
 
