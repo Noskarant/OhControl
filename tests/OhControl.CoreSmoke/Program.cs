@@ -422,6 +422,43 @@ internal static class Program
             goodbye.Text,
             "au revoir",
             "ATC should respond naturally to a pilot goodbye.");
+        var handoffEngine =
+            new AtcEngine(atis);
+
+        AtcResponse towerToGround =
+            handoffEngine.Handle(
+                tower,
+                "F-GABC piste dégagée",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            towerToGround.Text,
+            "Bron Sol",
+            "Tower-to-Ground handoff should include Bron Sol.");
+
+        ExpectContains(
+            towerToGround.Text,
+            "unité, deux, unité décimale sept, zéro, cinq",
+            "Tower-to-Ground handoff should include 121.705.");
+
+        ExpectContains(
+            towerToGround.Text,
+            "au revoir",
+            "Tower-to-Ground handoff should end with au revoir.");
+
+        AtcResponse frequencyRelease =
+            handoffEngine.Handle(
+                tower,
+                "F-GABC quitte la fréquence",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            frequencyRelease.Text,
+            "au revoir",
+            "Frequency release should end with au revoir.");
+
     }
 
     private static void Expect(
