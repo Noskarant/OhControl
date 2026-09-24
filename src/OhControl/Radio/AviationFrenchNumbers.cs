@@ -129,7 +129,7 @@ namespace OhControl.Radio
 
             string whole =
                 string.Join(
-                    " ",
+                    ", ",
                     parts[0]
                         .Select(
                             c => Digits[c]));
@@ -150,7 +150,7 @@ namespace OhControl.Radio
             return whole +
                    " décimale " +
                    string.Join(
-                       " ",
+                       ", ",
                        decimals.Select(
                            c => Digits[c]));
         }
