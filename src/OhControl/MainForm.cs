@@ -298,14 +298,14 @@ namespace OhControl
             {
                 AutoSize = true,
                 FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
+                WrapContents = true,
                 BackColor = Color.Transparent,
                 Margin = new Padding(0, 0, 0, 8)
             };
 
             var testLabel = new Label
             {
-                Text = "Test hors simulateur",
+                Text = "Test",
                 AutoSize = true,
                 ForeColor = OhControlTheme.TextSecondary,
                 Margin = new Padding(0, 7, 10, 0)
