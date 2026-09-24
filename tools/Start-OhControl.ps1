@@ -67,9 +67,14 @@ function Install-LocalDotnetSdk {
         Invoke-WebRequest -Uri "https://dot.net/v1/dotnet-install.ps1" -OutFile $dotnetInstallScript -UseBasicParsing
     }
 
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $dotnetInstallScript -Channel "8.0" -InstallDir $localDotnetRoot -NoPath
+    $installOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $dotnetInstallScript -Channel "8.0" -InstallDir $localDotnetRoot -NoPath 2>&1
+    $installExitCode = $LASTEXITCODE
 
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $localDotnet)) {
+    if ($installOutput) {
+        $installOutput | ForEach-Object { Write-Host $_ }
+    }
+
+    if ($installExitCode -ne 0 -or -not (Test-Path $localDotnet)) {
         throw "Impossible d'installer automatiquement le SDK .NET local."
     }
 
