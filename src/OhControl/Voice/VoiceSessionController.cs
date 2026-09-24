@@ -348,15 +348,6 @@ namespace OhControl.Voice
                 return;
             }
 
-            if (_simulatorConnected &&
-                _latestTelemetry != null &&
-                !_latestTelemetry.Com1Transmit)
-            {
-                StatusChanged?.Invoke(
-                    "COM1 n'est pas sélectionnée pour l'émission.");
-                return;
-            }
-
             try
             {
                 _collisionDetected = IsCurrentFrequencyBusy();
