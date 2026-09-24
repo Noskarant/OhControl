@@ -21,6 +21,8 @@ namespace OhControl
 
         private readonly ComboBox _inputDevice = new ComboBox();
         private readonly ComboBox _outputDevice = new ComboBox();
+        private readonly TrackBar _atcVolume = new TrackBar();
+        private readonly Label _atcVolumeValue = new Label();
 
         private readonly Label _keyboardPtt = new Label();
         private readonly Label _joystickPtt = new Label();
@@ -182,7 +184,7 @@ namespace OhControl
         {
             var card = new AviationCard { Dock = DockStyle.Fill };
 
-            var layout = CreateFormLayout(7);
+            var layout = CreateFormLayout(8);
             AddSectionHeader(layout, 0, "PILOTE & VOIX");
 
             AddField(
@@ -247,7 +249,17 @@ namespace OhControl
                 "Casque ou haut-parleurs",
                 _outputDevice);
 
-            AddDivider(layout, 3);
+            var volumeRow =
+                BuildVolumeRow();
+
+            AddCustomField(
+                layout,
+                3,
+                "Volume ATC",
+                "ATIS, Sol et Tour",
+                volumeRow);
+
+            AddDivider(layout, 4);
 
             var keyboardRow =
                 BuildBindingRow(
@@ -257,7 +269,7 @@ namespace OhControl
 
             AddCustomField(
                 layout,
-                4,
+                5,
                 "Clavier",
                 "Maintiens cette touche pour émettre",
                 keyboardRow);
@@ -267,7 +279,7 @@ namespace OhControl
 
             AddCustomField(
                 layout,
-                5,
+                6,
                 "Joystick / manche",
                 "Optionnel · bouton physique PTT",
                 joystickRow);
@@ -283,7 +295,7 @@ namespace OhControl
                 Margin = new Padding(0, 8, 0, 0)
             };
 
-            layout.Controls.Add(note, 1, 6);
+            layout.Controls.Add(note, 1, 7);
             card.Controls.Add(layout);
             return card;
         }
@@ -463,6 +475,16 @@ namespace OhControl
             _roomCode.Text =
                 _settings.MultiplayerRoomCode;
 
+            _atcVolume.Value =
+                Math.Max(
+                    _atcVolume.Minimum,
+                    Math.Min(
+                        _atcVolume.Maximum,
+                        _settings.AtcVolumePercent));
+
+            _atcVolumeValue.Text =
+                _atcVolume.Value + " %";
+
             foreach (TextBox textBox in new[]
             {
                 _callsign,
@@ -525,6 +547,50 @@ namespace OhControl
             {
                 _outputDevice.SelectedIndex = 0;
             }
+        }
+
+        private Panel BuildVolumeRow()
+        {
+            var panel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Height = 46,
+                BackColor = Color.Transparent
+            };
+
+            _atcVolume.Minimum = 0;
+            _atcVolume.Maximum = 100;
+            _atcVolume.TickFrequency = 10;
+            _atcVolume.SmallChange = 5;
+            _atcVolume.LargeChange = 10;
+            _atcVolume.AutoSize = false;
+            _atcVolume.Height = 36;
+            _atcVolume.Width = 250;
+            _atcVolume.BackColor = OhControlTheme.Card;
+
+            _atcVolumeValue.AutoSize = true;
+            _atcVolumeValue.Font =
+                OhControlTheme.Font(
+                    10f,
+                    FontStyle.Bold);
+
+            _atcVolumeValue.ForeColor =
+                OhControlTheme.Accent;
+
+            _atcVolumeValue.Location =
+                new Point(265, 10);
+
+            _atcVolume.Scroll +=
+                (_, __) =>
+                {
+                    _atcVolumeValue.Text =
+                        _atcVolume.Value + " %";
+                };
+
+            panel.Controls.Add(_atcVolume);
+            panel.Controls.Add(_atcVolumeValue);
+
+            return panel;
         }
 
         private Panel BuildBindingRow(
@@ -983,6 +1049,9 @@ namespace OhControl
                 _settings.OutputDeviceNumber =
                     output.DeviceNumber;
             }
+
+            _settings.AtcVolumePercent =
+                _atcVolume.Value;
 
             _settings.PttKeyboardKey =
                 _capturedKeyboardKey;
