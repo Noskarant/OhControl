@@ -333,8 +333,36 @@ namespace OhControl
                     _voice.SetTestStation(kind);
                 };
 
+            var testOutput = new Button
+            {
+                Text = "Tester sortie",
+                AutoSize = true
+            };
+
+            OhControlTheme.StyleSecondaryButton(
+                testOutput);
+
+            testOutput.Click +=
+                async (_, __) =>
+                    await _voice.TestRadioOutputAsync();
+
+            var testVoice = new Button
+            {
+                Text = "Tester voix ATC",
+                AutoSize = true
+            };
+
+            OhControlTheme.StyleSecondaryButton(
+                testVoice);
+
+            testVoice.Click +=
+                async (_, __) =>
+                    await _voice.TestControllerVoiceAsync();
+
             testLine.Controls.Add(testLabel);
             testLine.Controls.Add(_testStation);
+            testLine.Controls.Add(testOutput);
+            testLine.Controls.Add(testVoice);
             layout.Controls.Add(testLine, 0, 5);
 
             _voiceConfigValue.AutoSize = true;
