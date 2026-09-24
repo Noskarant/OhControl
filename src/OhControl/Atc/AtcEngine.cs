@@ -819,6 +819,60 @@ namespace OhControl.Atc
                 return null;
             }
 
+            if (pending.Kind == "frequency")
+            {
+                bool frequencyOk =
+                    pending.FrequencyMhz.HasValue &&
+                    ContainsFrequency(
+                        text,
+                        pending.FrequencyMhz.Value);
+
+                if (frequencyOk)
+                {
+                    _pendingReadbacks.Remove(
+                        pendingKey);
+
+                    if (IsGoodbye(text))
+                    {
+                        return Speak(
+                            spokenCallsign +
+                            ", au revoir.",
+                            "Fréquence correctement collationnée et fin d'échange reconnue.");
+                    }
+
+                    return new AtcResponse
+                    {
+                        Feedback =
+                            "Fréquence correctement collationnée : " +
+                            pending.FrequencyMhz.Value
+                                .ToString(
+                                    "000.000",
+                                    CultureInfo.InvariantCulture) +
+                            " MHz."
+                    };
+                }
+
+                if (IsAcknowledgementOnly(text) ||
+                    LooksLikeFrequencyReadback(text))
+                {
+                    string stationName =
+                        StationNameForFrequency(
+                            pending.FrequencyMhz);
+
+                    return Speak(
+                        spokenCallsign +
+                        ", collationnez, contactez " +
+                        stationName +
+                        " " +
+                        AviationFrenchNumbers.Frequency(
+                            pending.FrequencyMhz ?? 0) +
+                        ".",
+                        "Le changement de fréquence doit être collationné.");
+                }
+
+                return null;
+            }
+
             if (pending.Kind == "taxi")
             {
                 bool holdingPointOk =
@@ -831,14 +885,24 @@ namespace OhControl.Atc
                         text,
                         pending.Runway);
 
-                if (holdingPointOk &&
-                    runwayOk &&
+                bool qnhOk =
+                    !pending.Qnh.HasValue ||
+                    ContainsQnh(
+                        text,
+                        pending.Qnh.Value);
+
+                bool taxiActionOk =
                     ContainsAny(
                         text,
                         "roule",
                         "roulons",
                         "point d attente",
-                        "point attente"))
+                        "point attente");
+
+                if (holdingPointOk &&
+                    runwayOk &&
+                    qnhOk &&
+                    taxiActionOk)
                 {
                     _pendingReadbacks.Remove(
                         pendingKey);
@@ -850,8 +914,19 @@ namespace OhControl.Atc
                             pending.HoldingPoint +
                             " / piste " +
                             pending.Runway +
+                            (pending.Qnh.HasValue
+                                ? " / QNH " +
+                                  pending.Qnh.Value
+                                : "") +
                             "."
                     };
+                }
+
+                if (IsAcknowledgementOnly(text))
+                {
+                    return BuildMandatoryReadbackReminder(
+                        spokenCallsign,
+                        pending);
                 }
 
                 if (LooksLikeReadback(text))
@@ -889,22 +964,19 @@ namespace OhControl.Atc
                     !alignmentOk ||
                     !waitOk)
                 {
-                    if (LooksLikeReadback(text))
+                    if (IsAcknowledgementOnly(text) ||
+                        LooksLikeReadback(text))
                     {
-                        return Speak(
-                            spokenCallsign +
-                            ", alignez-vous et attendez piste " +
-                            AviationFrenchNumbers.Runway(
-                                pending.Runway) +
-                            ".",
-                            "Collationnement incomplet : la piste, l'alignement et l'attente doivent être repris.");
+                        return BuildMandatoryReadbackReminder(
+                            spokenCallsign,
+                            pending);
                     }
 
                     return null;
                 }
 
                 _pendingReadbacks.Remove(
-                    callsignKey);
+                    pendingKey);
 
                 MultiplayerPlayerState finalTraffic =
                     FindTraffic(
@@ -955,9 +1027,8 @@ namespace OhControl.Atc
                     ContainsAny(
                         text,
                         "je decolle",
-                        "je décolle",
                         "decolle",
-                        "décolle");
+                        "nous decollons");
 
                 if (correct)
                 {
@@ -971,21 +1042,18 @@ namespace OhControl.Atc
                     return new AtcResponse
                     {
                         Feedback =
-                            "Collationnement décollage correct : « piste " +
+                            "Collationnement décollage correct : piste " +
                             pending.Runway +
-                            ", je décolle »."
+                            ", je décolle."
                     };
                 }
 
-                if (LooksLikeReadback(text))
+                if (IsAcknowledgementOnly(text) ||
+                    LooksLikeReadback(text))
                 {
-                    return Speak(
-                        spokenCallsign +
-                        ", piste " +
-                        AviationFrenchNumbers.Runway(
-                            pending.Runway) +
-                        ", autorisé décollage.",
-                        "Collationnement décollage incomplet : reprends la piste et l'action de décoller.");
+                    return BuildMandatoryReadbackReminder(
+                        spokenCallsign,
+                        pending);
                 }
 
                 return null;
@@ -1011,21 +1079,18 @@ namespace OhControl.Atc
                     return new AtcResponse
                     {
                         Feedback =
-                            "Collationnement atterrissage correct : « piste " +
+                            "Collationnement atterrissage correct : piste " +
                             pending.Runway +
-                            ", j'atterris »."
+                            ", j'atterris."
                     };
                 }
 
-                if (LooksLikeReadback(text))
+                if (IsAcknowledgementOnly(text) ||
+                    LooksLikeReadback(text))
                 {
-                    return Speak(
-                        spokenCallsign +
-                        ", piste " +
-                        AviationFrenchNumbers.Runway(
-                            pending.Runway) +
-                        ", autorisé atterrissage.",
-                        "Collationnement atterrissage incomplet : reprends la piste et l'action d'atterrir.");
+                    return BuildMandatoryReadbackReminder(
+                        spokenCallsign,
+                        pending);
                 }
 
                 return null;
@@ -1054,10 +1119,339 @@ namespace OhControl.Atc
                     };
                 }
 
+                if (IsAcknowledgementOnly(text) ||
+                    LooksLikeReadback(text))
+                {
+                    return BuildMandatoryReadbackReminder(
+                        spokenCallsign,
+                        pending);
+                }
+
                 return null;
             }
 
             return null;
+        }
+
+        private AtcResponse TryHandleCourtesyOrAcknowledgement(
+            string spokenCallsign,
+            string text)
+        {
+            if (IsGoodbye(text))
+            {
+                return Speak(
+                    spokenCallsign +
+                    ", au revoir.",
+                    "Fin d'échange reconnue.");
+            }
+
+            if (IsReportAcknowledgement(text))
+            {
+                return new AtcResponse
+                {
+                    Feedback =
+                        "Instruction de rappel correctement accusée."
+                };
+            }
+
+            if (IsAcknowledgementOnly(text))
+            {
+                return new AtcResponse
+                {
+                    Feedback =
+                        "Accusé de réception reconnu."
+                };
+            }
+
+            return null;
+        }
+
+        private static bool IsGoodbye(string text)
+        {
+            return ContainsAny(
+                text,
+                "au revoir",
+                "bonne journee",
+                "bonne soiree",
+                "a bientot");
+        }
+
+        private static bool IsReportAcknowledgement(
+            string text)
+        {
+            return ContainsAny(
+                text,
+                "je rappelle finale",
+                "on rappelle finale",
+                "nous rappelons finale",
+                "rappellerai finale",
+                "je rappelle vent arriere",
+                "on rappelle vent arriere",
+                "nous rappelons vent arriere",
+                "rappellerai vent arriere",
+                "je rappelle courte finale",
+                "on rappelle courte finale");
+        }
+
+        private static bool IsAcknowledgementOnly(
+            string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            bool acknowledgement =
+                ContainsAny(
+                    text,
+                    "recu",
+                    "bien recu",
+                    "compris",
+                    "bien compris",
+                    "roger",
+                    "wilco",
+                    "d accord",
+                    "merci");
+
+            bool operationalContent =
+                ContainsAny(
+                    text,
+                    "roule",
+                    "point d attente",
+                    "piste",
+                    "aligne",
+                    "attends",
+                    "decolle",
+                    "atterris",
+                    "touche",
+                    "frequence",
+                    "decimale") ||
+                text.Any(char.IsDigit);
+
+            return acknowledgement &&
+                   !operationalContent;
+        }
+
+        private static bool LooksLikeFrequencyReadback(
+            string text)
+        {
+            return ContainsAny(
+                       text,
+                       "frequence",
+                       "decimale",
+                       "contacte",
+                       "contactons") ||
+                   (text ?? "").Any(
+                       char.IsDigit);
+        }
+
+        private static bool ContainsFrequency(
+            string text,
+            double frequencyMhz)
+        {
+            string normalized =
+                Normalize(text);
+
+            string compact =
+                normalized.Replace(
+                    " ",
+                    "");
+
+            string formatted =
+                frequencyMhz.ToString(
+                    "000.000",
+                    CultureInfo.InvariantCulture);
+
+            string sixDigits =
+                formatted.Replace(
+                    ".",
+                    "");
+
+            string[] parts =
+                formatted.Split('.');
+
+            string shortDigits =
+                parts[1].EndsWith(
+                    "00",
+                    StringComparison.Ordinal)
+                    ? parts[0] +
+                      parts[1].Substring(0, 1)
+                    : sixDigits;
+
+            string officialSpeech =
+                Normalize(
+                    AviationFrenchNumbers.Frequency(
+                        frequencyMhz))
+                    .Replace(
+                        " ",
+                        "");
+
+            string legacySpeech =
+                officialSpeech.Replace(
+                    "unite",
+                    "un");
+
+            return compact.Contains(
+                       sixDigits) ||
+                   compact.Contains(
+                       shortDigits) ||
+                   compact.Contains(
+                       officialSpeech) ||
+                   compact.Contains(
+                       legacySpeech);
+        }
+
+        private static bool ContainsQnh(
+            string text,
+            int qnh)
+        {
+            string compact =
+                Normalize(text)
+                    .Replace(
+                        " ",
+                        "");
+
+            string digits =
+                qnh.ToString(
+                    CultureInfo.InvariantCulture);
+
+            string spoken =
+                Normalize(
+                    AviationFrenchNumbers.DigitsOnly(
+                        qnh))
+                    .Replace(
+                        " ",
+                        "");
+
+            string unitSpeech =
+                string.Concat(
+                    digits.Select(
+                        c =>
+                            c == '1'
+                                ? "unite"
+                                : AviationFrenchNumbers
+                                    .DigitsOnly(
+                                        c - '0')
+                                    .Replace(
+                                        " ",
+                                        "")));
+
+            return compact.Contains(digits) ||
+                   compact.Contains(spoken) ||
+                   compact.Contains(unitSpeech);
+        }
+
+        private static AtcResponse BuildMandatoryReadbackReminder(
+            string spokenCallsign,
+            PendingReadback pending)
+        {
+            if (pending.Kind == "taxi")
+            {
+                string qnh =
+                    pending.Qnh.HasValue
+                        ? ", Q N H " +
+                          AviationFrenchNumbers.DigitsOnly(
+                              pending.Qnh.Value)
+                        : "";
+
+                return Speak(
+                    spokenCallsign +
+                    ", collationnez point d'attente " +
+                    AviationFrenchNumbers.Identifier(
+                        pending.HoldingPoint) +
+                    ", piste " +
+                    AviationFrenchNumbers.Runway(
+                        pending.Runway) +
+                    qnh +
+                    ".",
+                    "Collationnement obligatoire incomplet.");
+            }
+
+            if (pending.Kind == "lineup_wait")
+            {
+                return Speak(
+                    spokenCallsign +
+                    ", collationnez, piste " +
+                    AviationFrenchNumbers.Runway(
+                        pending.Runway) +
+                    ", alignez-vous et attendez.",
+                    "Collationnement alignement/attente obligatoire.");
+            }
+
+            if (pending.Kind == "takeoff")
+            {
+                return Speak(
+                    spokenCallsign +
+                    ", collationnez, piste " +
+                    AviationFrenchNumbers.Runway(
+                        pending.Runway) +
+                    ", je décolle.",
+                    "La clairance de décollage doit être collationnée.");
+            }
+
+            if (pending.Kind == "land")
+            {
+                return Speak(
+                    spokenCallsign +
+                    ", collationnez, piste " +
+                    AviationFrenchNumbers.Runway(
+                        pending.Runway) +
+                    ", j'atterris.",
+                    "La clairance d'atterrissage doit être collationnée.");
+            }
+
+            if (pending.Kind == "touch")
+            {
+                return Speak(
+                    spokenCallsign +
+                    ", collationnez, piste " +
+                    AviationFrenchNumbers.Runway(
+                        pending.Runway) +
+                    ", toucher.",
+                    "La clairance de toucher doit être collationnée.");
+            }
+
+            if (pending.Kind == "frequency" &&
+                pending.FrequencyMhz.HasValue)
+            {
+                return Speak(
+                    spokenCallsign +
+                    ", collationnez fréquence " +
+                    AviationFrenchNumbers.Frequency(
+                        pending.FrequencyMhz.Value) +
+                    ".",
+                    "Le changement de fréquence doit être collationné.");
+            }
+
+            return Speak(
+                spokenCallsign +
+                ", collationnez.",
+                "Collationnement obligatoire.");
+        }
+
+        private static string StationNameForFrequency(
+            double? frequencyMhz)
+        {
+            if (!frequencyMhz.HasValue)
+            {
+                return "la fréquence";
+            }
+
+            if (Math.Abs(
+                    frequencyMhz.Value -
+                    118.100) <= 0.006)
+            {
+                return "Bron Tour";
+            }
+
+            if (Math.Abs(
+                    frequencyMhz.Value -
+                    121.705) <= 0.006)
+            {
+                return "Bron Sol";
+            }
+
+            return "la fréquence";
         }
 
         private static string BuildReportingPointFeedback(
