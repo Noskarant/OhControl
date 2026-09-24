@@ -47,3 +47,6 @@ jobs:
             $errors | Format-List
             exit 1
           }
+
+      - name: Compile almost-complete app
+        run: dotnet build tests/OhControl.FullSmoke/OhControl.FullSmoke.csproj --configuration Release
