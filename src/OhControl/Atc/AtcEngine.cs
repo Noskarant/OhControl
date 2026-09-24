@@ -34,6 +34,7 @@ namespace OhControl.Atc
             public string HoldingPoint { get; set; }
             public int? Qnh { get; set; }
             public double? FrequencyMhz { get; set; }
+            public RadioStationKind? SourceStationKind { get; set; }
         }
 
         private readonly AtisService _atisService;
@@ -300,7 +301,8 @@ namespace OhControl.Atc
                     null,
                     null,
                     null,
-                    118.100);
+                    118.100,
+                    RadioStationKind.Ground);
 
                 return Speak(
                     spokenCallsign +
@@ -784,7 +786,8 @@ namespace OhControl.Atc
                     null,
                     null,
                     null,
-                    121.705);
+                    121.705,
+                    RadioStationKind.Tower);
 
                 return Speak(
                     spokenCallsign +
@@ -816,6 +819,18 @@ namespace OhControl.Atc
                 pendingKey,
                 out PendingReadback pending))
             {
+                return null;
+            }
+
+            if (pending.Kind == "frequency" &&
+                pending.SourceStationKind.HasValue &&
+                station != null &&
+                station.Kind !=
+                pending.SourceStationKind.Value)
+            {
+                _pendingReadbacks.Remove(
+                    pendingKey);
+
                 return null;
             }
 
@@ -1618,7 +1633,8 @@ namespace OhControl.Atc
             string runway,
             string holdingPoint,
             int? qnh = null,
-            double? frequencyMhz = null)
+            double? frequencyMhz = null,
+            RadioStationKind? sourceStationKind = null)
         {
             _pendingReadbacks[
                 NormalizeCallsignKey(
@@ -1629,7 +1645,8 @@ namespace OhControl.Atc
                     Runway = runway,
                     HoldingPoint = holdingPoint,
                     Qnh = qnh,
-                    FrequencyMhz = frequencyMhz
+                    FrequencyMhz = frequencyMhz,
+                    SourceStationKind = sourceStationKind
                 };
         }
 
