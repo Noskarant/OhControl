@@ -44,6 +44,10 @@ namespace OhControl.Atc
             new Dictionary<string, PendingReadback>(
                 StringComparer.OrdinalIgnoreCase);
 
+        private readonly Dictionary<string, string> _lastAtcTransmissions =
+            new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase);
+
         private IReadOnlyList<MultiplayerPlayerState> _traffic =
             Array.Empty<MultiplayerPlayerState>();
 
@@ -85,6 +89,18 @@ namespace OhControl.Atc
             string spokenCallsign = AviationCallsign.ToSpeech(callsign);
             AtisBroadcast atis = _atisService.Build(telemetry);
 
+            AtcResponse repeat =
+                TryHandleRepeatRequest(
+                    callsign,
+                    spokenCallsign,
+                    normalized,
+                    station);
+
+            if (repeat != null)
+            {
+                return repeat;
+            }
+
             AtcResponse readback =
                 TryHandleReadback(
                     callsign,
@@ -96,25 +112,142 @@ namespace OhControl.Atc
 
             if (readback != null)
             {
+                RememberAtcTransmission(
+                    callsign,
+                    station,
+                    readback);
+
                 return readback;
             }
 
-            if (station.Kind == RadioStationKind.Ground)
+            AtcResponse response =
+                station.Kind == RadioStationKind.Ground
+                    ? HandleGround(
+                        normalized,
+                        callsign,
+                        spokenCallsign,
+                        atis)
+                    : HandleTower(
+                        normalized,
+                        callsign,
+                        spokenCallsign,
+                        atis,
+                        telemetry,
+                        station.FrequencyMhz);
+
+            RememberAtcTransmission(
+                callsign,
+                station,
+                response);
+
+            return response;
+        }
+
+        private AtcResponse TryHandleRepeatRequest(
+            string callsign,
+            string spokenCallsign,
+            string text,
+            RadioStation station)
+        {
+            if (!IsRepeatRequest(text))
             {
-                return HandleGround(
-                    normalized,
-                    callsign,
-                    spokenCallsign,
-                    atis);
+                return null;
             }
 
-            return HandleTower(
-                normalized,
-                callsign,
-                spokenCallsign,
-                atis,
-                telemetry,
-                station.FrequencyMhz);
+            string key =
+                LastTransmissionKey(
+                    callsign,
+                    station);
+
+            if (!_lastAtcTransmissions.TryGetValue(
+                    key,
+                    out string previous) ||
+                string.IsNullOrWhiteSpace(previous))
+            {
+                return Speak(
+                    spokenCallsign +
+                    ", aucune transmission précédente à répéter, transmettez vos intentions.",
+                    "Demande de répétition reconnue, mais aucune transmission ATC précédente n'est disponible.");
+            }
+
+            string body =
+                previous.Trim();
+
+            string prefix =
+                spokenCallsign + ",";
+
+            if (body.StartsWith(
+                    prefix,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                body =
+                    body.Substring(prefix.Length)
+                        .Trim();
+            }
+
+            return Speak(
+                spokenCallsign +
+                ", je répète, " +
+                body,
+                "Dernière transmission ATC répétée à la demande du pilote.");
+        }
+
+        private void RememberAtcTransmission(
+            string callsign,
+            RadioStation station,
+            AtcResponse response)
+        {
+            if (station == null ||
+                response == null ||
+                string.IsNullOrWhiteSpace(response.Text))
+            {
+                return;
+            }
+
+            _lastAtcTransmissions[
+                LastTransmissionKey(
+                    callsign,
+                    station)] =
+                response.Text.Trim();
+        }
+
+        private static string LastTransmissionKey(
+            string callsign,
+            RadioStation station)
+        {
+            return NormalizeCallsignKey(callsign) +
+                   "|" +
+                   (station?.Kind.ToString() ?? "Unknown");
+        }
+
+        private static bool IsRepeatRequest(
+            string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            if (ContainsAny(
+                text,
+                "repetez",
+                "pouvez vous repeter",
+                "pouvez repeter",
+                "merci de repeter",
+                "redites",
+                "redire",
+                "encore une fois",
+                "repeter la derniere",
+                "repetez la derniere"))
+            {
+                return true;
+            }
+
+            return text == "repete" ||
+                   text == "repeter" ||
+                   text.EndsWith(
+                       " repete",
+                       StringComparison.Ordinal);
         }
 
         private AtcResponse HandleGround(
