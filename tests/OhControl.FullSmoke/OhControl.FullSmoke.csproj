@@ -19,7 +19,7 @@
 
   <ItemGroup>
     <Compile Include="../../src/OhControl/**/*.cs"
-             Exclude="../../src/OhControl/Program.cs;../../src/OhControl/SimConnectClient.cs"
+             Exclude="../../src/OhControl/SimConnectClient.cs"
              LinkBase="App" />
     <Compile Include="SimConnectClientStub.cs" />
   </ItemGroup>
