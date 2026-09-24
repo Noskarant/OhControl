@@ -114,6 +114,18 @@ internal static class Program
             "roulez point d'attente",
             "A circuit request embedded in the initial call must be handled operationally.");
 
+        AtcResponse naturalCircuitRequestVariant =
+            new AtcEngine(atis).Handle(
+                ground,
+                "Bron Sol F-GABC je voudrais effectuer des tours de piste",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            naturalCircuitRequestVariant.Text,
+            "roulez point d'attente",
+            "Natural wording such as voudrais effectuer des tours de piste must be recognized.");
+
         AtcResponse taxi =
             engine.Handle(
                 ground,
