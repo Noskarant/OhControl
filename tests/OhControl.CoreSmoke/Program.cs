@@ -147,8 +147,8 @@ internal static class Program
 
         ExpectContains(
             taxi.Text,
-            "A1",
-            "RWY 16 taxi clearance should use A1.");
+            "Alpha un",
+            "RWY 16 taxi clearance should speak A1 as Alpha un.");
 
         AtcResponse taxiReadback =
             engine.Handle(
