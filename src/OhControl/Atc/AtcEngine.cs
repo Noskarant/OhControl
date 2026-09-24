@@ -263,6 +263,68 @@ namespace OhControl.Atc
                        StringComparison.Ordinal);
         }
 
+        private AtcResponse BuildFrequencyHandoff(
+            string callsignKey,
+            string spokenCallsign,
+            string targetStation,
+            double frequencyMhz,
+            RadioStationKind sourceStation,
+            string feedback)
+        {
+            SetPendingReadback(
+                callsignKey,
+                "frequency",
+                null,
+                null,
+                null,
+                frequencyMhz,
+                sourceStation);
+
+            return Speak(
+                spokenCallsign +
+                ", reçu, contactez " +
+                targetStation +
+                " " +
+                AviationFrenchNumbers.Frequency(
+                    frequencyMhz) +
+                ", au revoir.",
+                feedback);
+        }
+
+        private static bool IsReadyForDeparture(
+            string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            bool ready =
+                ContainsAny(
+                    text,
+                    "pret",
+                    "prêt",
+                    "pret au depart",
+                    "prêt au départ",
+                    "sommes prets",
+                    "sommes prêts",
+                    "on est pret",
+                    "on est prêt",
+                    "ready");
+
+            bool departureContext =
+                ContainsAny(
+                    text,
+                    "depart",
+                    "départ",
+                    "point d attente",
+                    "point attente",
+                    "attente");
+
+            return ready &&
+                   departureContext;
+        }
+
         private AtcResponse HandleGround(
             string text,
             string callsignKey,
@@ -284,32 +346,19 @@ namespace OhControl.Atc
                     "Premier contact reconnu.");
             }
 
-            if (ContainsAny(
-                text,
-                "pret",
-                "prêt",
-                "point d attente",
-                "point attente"))
+            if (IsReadyForDeparture(text))
             {
                 SetState(
                     callsignKey,
                     TrainingState.HoldingPoint);
 
-                SetPendingReadback(
+                return BuildFrequencyHandoff(
                     callsignKey,
-                    "frequency",
-                    null,
-                    null,
-                    null,
+                    spokenCallsign,
+                    "Bron Tour",
                     118.100,
-                    RadioStationKind.Ground);
-
-                return Speak(
-                    spokenCallsign +
-                    ", reçu, contactez Bron Tour " +
-                    AviationFrenchNumbers.Frequency(118.100) +
-                    ".",
-                    "Transfert vers 118.100 MHz.");
+                    RadioStationKind.Ground,
+                    "Prêt au départ reconnu ; transfert vers Bron Tour.");
             }
 
             if (ContainsAny(
@@ -780,21 +829,13 @@ namespace OhControl.Atc
                     callsignKey,
                     TrainingState.Landed);
 
-                SetPendingReadback(
+                return BuildFrequencyHandoff(
                     callsignKey,
-                    "frequency",
-                    null,
-                    null,
-                    null,
+                    spokenCallsign,
+                    "Bron Sol",
                     121.705,
-                    RadioStationKind.Tower);
-
-                return Speak(
-                    spokenCallsign +
-                    ", reçu, contactez Bron Sol " +
-                    AviationFrenchNumbers.Frequency(121.705) +
-                    ".",
-                    "Après dégagement, passage sur 121.705 MHz.");
+                    RadioStationKind.Tower,
+                    "Piste dégagée reconnue ; transfert vers Bron Sol.");
             }
 
             return Speak(
@@ -922,18 +963,39 @@ namespace OhControl.Atc
                     _pendingReadbacks.Remove(
                         pendingKey);
 
+                    string feedback =
+                        "Collationnement roulage correct : " +
+                        pending.HoldingPoint +
+                        " / piste " +
+                        pending.Runway +
+                        (pending.Qnh.HasValue
+                            ? " / QNH " +
+                              pending.Qnh.Value
+                            : "") +
+                        ".";
+
+                    if (station != null &&
+                        station.Kind ==
+                        RadioStationKind.Ground &&
+                        IsReadyForDeparture(text))
+                    {
+                        SetState(
+                            callsignKey,
+                            TrainingState.HoldingPoint);
+
+                        return BuildFrequencyHandoff(
+                            callsignKey,
+                            spokenCallsign,
+                            "Bron Tour",
+                            118.100,
+                            RadioStationKind.Ground,
+                            feedback +
+                            " Prêt au départ reconnu ; transfert Tour immédiat.");
+                    }
+
                     return new AtcResponse
                     {
-                        Feedback =
-                            "Collationnement roulage correct : " +
-                            pending.HoldingPoint +
-                            " / piste " +
-                            pending.Runway +
-                            (pending.Qnh.HasValue
-                                ? " / QNH " +
-                                  pending.Qnh.Value
-                                : "") +
-                            "."
+                        Feedback = feedback
                     };
                 }
 
