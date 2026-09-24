@@ -151,7 +151,7 @@ namespace OhControl.Atc
 
                 return Speak(
                     spokenCallsign +
-                    ", contactez Bron Tour " +
+                    ", reçu, contactez Bron Tour " +
                     AviationFrenchNumbers.Frequency(118.100) +
                     ".",
                     "Transfert vers 118.100 MHz.");
@@ -170,7 +170,7 @@ namespace OhControl.Atc
 
                 return Speak(
                     spokenCallsign +
-                    ", roulez au parking.",
+                    ", reçu, roulez au parking.",
                     "Piste dégagée reconnue.");
             }
 
@@ -212,14 +212,15 @@ namespace OhControl.Atc
             return Speak(
                 spokenCallsign +
                 ", roulez point d'attente " +
-                profile.FullLengthHoldingPoint +
-                " piste " +
+                AviationFrenchNumbers.Identifier(
+                    profile.FullLengthHoldingPoint) +
+                ", piste " +
                 AviationFrenchNumbers.Runway(
                     atis.Runway) +
-                ". Q N H " +
+                ", Q N H " +
                 ExtractQnhSpeech(
                     atis.Text) +
-                ". Rappelez prêt.",
+                ". Rappelez prêt au départ au point d'attente.",
                 "Demande de départ reconnue. Roulage pleine longueur vers " +
                 profile.FullLengthHoldingPoint +
                 ".");
@@ -386,7 +387,8 @@ namespace OhControl.Atc
                     return Speak(
                         spokenCallsign +
                         ", maintenez avant point d'attente " +
-                        ground.FullLengthHoldingPoint +
+                        AviationFrenchNumbers.Identifier(
+                            ground.FullLengthHoldingPoint) +
                         ", trafic " +
                         AviationCallsign.ToSpeech(
                             blockingTraffic.Callsign) +
@@ -409,12 +411,10 @@ namespace OhControl.Atc
 
                 return Speak(
                     spokenCallsign +
-                    ", alignez-vous et attendez piste " +
+                    ", piste " +
                     AviationFrenchNumbers.Runway(
                         atis.Runway) +
-                    ", point d'attente " +
-                    ground.FullLengthHoldingPoint +
-                    ".",
+                    ", alignez-vous et attendez.",
                     "« Alignez-vous et attendez » est traité comme une instruction indivisible.");
             }
 
@@ -470,7 +470,7 @@ namespace OhControl.Atc
 
                 return Speak(
                     spokenCallsign +
-                    ", numéro un, rappelez finale piste " +
+                    ", numéro un, poursuivez, rappelez finale piste " +
                     AviationFrenchNumbers.Runway(
                         atis.Runway) +
                     ".",
@@ -490,7 +490,7 @@ namespace OhControl.Atc
 
                 return Speak(
                     spokenCallsign +
-                    ", rappelez finale piste " +
+                    ", poursuivez, rappelez finale piste " +
                     AviationFrenchNumbers.Runway(
                         atis.Runway) +
                     ".",
@@ -510,7 +510,7 @@ namespace OhControl.Atc
 
                 return Speak(
                     spokenCallsign +
-                    ", rappelez vent arrière piste " +
+                    ", remise de gaz reçue, rappelez vent arrière piste " +
                     AviationFrenchNumbers.Runway(
                         atis.Runway) +
                     ".",
@@ -985,9 +985,10 @@ namespace OhControl.Atc
         {
             return Speak(
                 spokenCallsign +
-                ", roulez point d'attente " +
-                pending.HoldingPoint +
-                " piste " +
+                ", je répète, roulez point d'attente " +
+                AviationFrenchNumbers.Identifier(
+                    pending.HoldingPoint) +
+                ", piste " +
                 AviationFrenchNumbers.Runway(
                     pending.Runway) +
                 ".",
@@ -1084,17 +1085,24 @@ namespace OhControl.Atc
                 return true;
             }
 
-            string normalizedPoint =
+            string compact =
+                (text ?? "")
+                    .ToLowerInvariant()
+                    .Replace(" ", "");
+
+            string rawPoint =
                 point
                     .ToLowerInvariant()
                     .Replace(" ", "");
 
-            string compact =
-                (text ?? "")
+            string spokenPoint =
+                Normalize(
+                    AviationFrenchNumbers.Identifier(
+                        point))
                     .Replace(" ", "");
 
-            return compact.Contains(
-                normalizedPoint);
+            return compact.Contains(rawPoint) ||
+                   compact.Contains(spokenPoint);
         }
 
         private static bool ContainsRunway(
