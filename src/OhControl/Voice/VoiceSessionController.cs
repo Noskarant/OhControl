@@ -143,6 +143,70 @@ namespace OhControl.Voice
             }
         }
 
+        public async Task TestRadioOutputAsync()
+        {
+            try
+            {
+                StatusChanged?.Invoke(
+                    "Test de la sortie radio…");
+
+                await _audioPlayer.PlayTestToneAsync(
+                    CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                StatusChanged?.Invoke(
+                    "Test sortie terminé.");
+            }
+            catch (Exception ex)
+            {
+                StatusChanged?.Invoke(
+                    "Sortie audio : " + ex.Message);
+            }
+        }
+
+        public async Task TestControllerVoiceAsync()
+        {
+            try
+            {
+                if (!_settings.IsElevenLabsConfigured)
+                {
+                    StatusChanged?.Invoke(
+                        "Configure ElevenLabs avant de tester la voix ATC.");
+                    return;
+                }
+
+                StatusChanged?.Invoke(
+                    "Test de la voix ATC…");
+
+                const string sample =
+                    "Fox Golf Alpha Bravo Charlie, Bron Sol, bonjour.";
+
+                byte[] audio =
+                    await _elevenLabs.SynthesizeAsync(
+                        sample,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                StatusChanged?.Invoke(
+                    "Voix ATC reçue · " +
+                    audio.Length +
+                    " octets · lecture…");
+
+                await _audioPlayer.PlayAsync(
+                    audio,
+                    CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                StatusChanged?.Invoke(
+                    "Test voix ATC terminé.");
+            }
+            catch (Exception ex)
+            {
+                StatusChanged?.Invoke(
+                    "Test voix ATC : " + ex.Message);
+            }
+        }
+
         public void SetSimulatorConnected(bool connected)
         {
             _simulatorConnected = connected;
