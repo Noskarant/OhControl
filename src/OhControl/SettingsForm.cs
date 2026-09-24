@@ -566,7 +566,7 @@ namespace OhControl
             _atcVolume.AutoSize = false;
             _atcVolume.Height = 36;
             _atcVolume.Width = 250;
-            _atcVolume.BackColor = OhControlTheme.Card;
+            _atcVolume.BackColor = OhControlTheme.Surface;
 
             _atcVolumeValue.AutoSize = true;
             _atcVolumeValue.Font =
