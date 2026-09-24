@@ -356,17 +356,32 @@ internal static class Program
             "alignez-vous et attendez",
             "Tower repeat must preserve the operational instruction.");
 
-        AtcResponse takeoff =
+        AtcResponse lineUpReadback =
             engine.Handle(
                 tower,
-                "Je m'aligne et j'attends piste 16 F-GABC",
+                "Fox Alpha Charlie on s'aligne et on attend",
                 "F-GABC",
+                telemetry);
+
+        Expect(
+            string.IsNullOrWhiteSpace(
+                lineUpReadback.Text),
+            "A correct line-up-and-wait readback must not trigger an immediate ATC reply.");
+
+        Expect(
+            lineUpReadback.ControllerFollowUpDelaySeconds == 18,
+            "A line-up-and-wait readback should schedule a Tower follow-up after about twenty seconds.");
+
+        AtcResponse takeoff =
+            engine.BuildScheduledFollowUp(
+                "F-GABC",
+                tower,
                 telemetry);
 
         ExpectContains(
             takeoff.Text,
             "autorisé décollage",
-            "Correct line-up readback should progress to take-off clearance.");
+            "The scheduled Tower follow-up should issue take-off clearance when the runway is free.");
 
         AtcResponse takeoffReadback =
             engine.Handle(
