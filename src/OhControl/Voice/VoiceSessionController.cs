@@ -194,7 +194,8 @@ namespace OhControl.Voice
 
                 await _audioPlayer.PlayAsync(
                     audio,
-                    CancellationToken.None)
+                    CancellationToken.None,
+                    0.82)
                     .ConfigureAwait(false);
 
                 StatusChanged?.Invoke(
@@ -354,6 +355,47 @@ namespace OhControl.Voice
 
         private double CurrentFrequencyMhz =>
             _currentStation?.FrequencyMhz ?? 0;
+
+        private double CurrentSignalQuality
+        {
+            get
+            {
+                if (!_simulatorConnected ||
+                    _latestTelemetry == null)
+                {
+                    return 0.86;
+                }
+
+                double distanceNm =
+                    Math.Max(
+                        0.0,
+                        _latestTelemetry
+                            .Com1ActiveDistanceMeters /
+                        1852.0);
+
+                if (distanceNm <= 8.0)
+                {
+                    return 0.92;
+                }
+
+                if (distanceNm <= 20.0)
+                {
+                    return 0.92 -
+                           (distanceNm - 8.0) *
+                           0.0125;
+                }
+
+                if (distanceNm <= 35.0)
+                {
+                    return 0.77 -
+                           (distanceNm - 20.0) *
+                           0.015;
+                }
+
+                return 0.45;
+            }
+        }
+
 
         private void RefreshStation()
         {
@@ -544,7 +586,8 @@ namespace OhControl.Voice
 
                 await _audioPlayer.PlayAsync(
                     audio,
-                    CancellationToken.None)
+                    CancellationToken.None,
+                    CurrentSignalQuality)
                     .ConfigureAwait(false);
 
                 StatusChanged?.Invoke(
@@ -669,7 +712,8 @@ namespace OhControl.Voice
 
                 await _audioPlayer.PlayAsync(
                     audio,
-                    CancellationToken.None)
+                    CancellationToken.None,
+                    CurrentSignalQuality)
                     .ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -824,7 +868,8 @@ namespace OhControl.Voice
 
                         await _audioPlayer.PlayAsync(
                             audio,
-                            token)
+                            token,
+                            CurrentSignalQuality)
                             .ConfigureAwait(false);
 
                         await Task.Delay(1200, token)
