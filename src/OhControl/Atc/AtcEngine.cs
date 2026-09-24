@@ -922,7 +922,7 @@ namespace OhControl.Atc
                         " " +
                         AviationFrenchNumbers.Frequency(
                             pending.FrequencyMhz ?? 0) +
-                        ".",
+                        ", au revoir.",
                         "Le changement de fréquence doit être collationné.");
                 }
 
@@ -1493,10 +1493,13 @@ namespace OhControl.Atc
             {
                 return Speak(
                     spokenCallsign +
-                    ", collationnez fréquence " +
+                    ", je répète, contactez " +
+                    StationNameForFrequency(
+                        pending.FrequencyMhz) +
+                    " " +
                     AviationFrenchNumbers.Frequency(
                         pending.FrequencyMhz.Value) +
-                    ".",
+                    ", au revoir.",
                     "Le changement de fréquence doit être collationné.");
             }
 
