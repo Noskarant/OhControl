@@ -182,6 +182,8 @@ namespace OhControl.Voice
         public event Action<string> LocalPhaseChanged;
 
         public Task StartAsync() => Task.CompletedTask;
+        public Task TestRadioOutputAsync() => Task.CompletedTask;
+        public Task TestControllerVoiceAsync() => Task.CompletedTask;
         public void SetSimulatorConnected(bool connected) { }
         public void SetTestStation(RadioStationKind kind) { }
         public void UpdateTelemetry(TelemetrySnapshot telemetry) { }
