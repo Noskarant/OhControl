@@ -1,0 +1,19 @@
+{
+  "ElevenLabsApiKey": "YOUR_ELEVENLABS_API_KEY",
+  "ElevenLabsVoiceId": "YOUR_FRENCH_CONTROLLER_VOICE_ID",
+  "PilotCallsign": "F-GABC",
+  "PlayerDisplayName": "Noe",
+  "AircraftType": "DR400",
+  "MicrophoneDeviceNumber": -1,
+  "OutputDeviceNumber": -1,
+
+  "PttKeyboardKey": "F12",
+  "PttJoystickDeviceId": -1,
+  "PttJoystickButtonIndex": -1,
+
+  "MultiplayerEnabled": false,
+  "SupabaseProjectUrl": "https://YOUR_PROJECT.supabase.co",
+  "SupabasePublishableKey": "sb_publishable_...",
+  "MultiplayerRoomCode": "ohcontrol-lyon-bron",
+  "PlayerId": ""
+}

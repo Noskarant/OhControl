@@ -1,0 +1,18 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+[Bb]uild/
+[Dd]ebug/
+[Rr]elease/
+packages/
+TestResults/
+*.log
+.env
+ohcontrol.local.json
+
+# Local launcher toolchain
+.ohcontrol-tools/

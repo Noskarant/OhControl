@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../src/OhControl/Atc/AtcEngine.cs" Link="Atc/AtcEngine.cs" />
+    <Compile Include="../../src/OhControl/Atc/AtcResponse.cs" Link="Atc/AtcResponse.cs" />
+    <Compile Include="../../src/OhControl/Lfly/LflyAirport.cs" Link="Lfly/LflyAirport.cs" />
+    <Compile Include="../../src/OhControl/Lfly/LflyGroundProfile.cs" Link="Lfly/LflyGroundProfile.cs" />
+    <Compile Include="../../src/OhControl/Lfly/LflyReportingPoints.cs" Link="Lfly/LflyReportingPoints.cs" />
+    <Compile Include="../../src/OhControl/Multiplayer/MultiplayerPlayerState.cs" Link="Multiplayer/MultiplayerPlayerState.cs" />
+    <Compile Include="../../src/OhControl/Radio/AtisService.cs" Link="Radio/AtisService.cs" />
+    <Compile Include="../../src/OhControl/Radio/AviationCallsign.cs" Link="Radio/AviationCallsign.cs" />
+    <Compile Include="../../src/OhControl/Radio/AviationFrenchNumbers.cs" Link="Radio/AviationFrenchNumbers.cs" />
+    <Compile Include="../../src/OhControl/Radio/RadioStation.cs" Link="Radio/RadioStation.cs" />
+    <Compile Include="../../src/OhControl/TelemetrySnapshot.cs" Link="TelemetrySnapshot.cs" />
+  </ItemGroup>
+</Project>
