@@ -123,45 +123,19 @@ namespace OhControl.Atc
             string spokenCallsign,
             AtisBroadcast atis)
         {
+            if (IsGroundDepartureRequest(text))
+            {
+                return BuildTaxiClearance(
+                    callsignKey,
+                    spokenCallsign,
+                    atis);
+            }
+
             if (IsInitialCall(text))
             {
                 return Speak(
                     spokenCallsign + ", Bron Sol, bonjour, transmettez.",
                     "Premier contact reconnu.");
-            }
-
-            if (ContainsAny(
-                text,
-                "demande roulage",
-                "roulage",
-                "consignes de roulage",
-                "taxi"))
-            {
-                var profile =
-                    LflyGroundProfile.ForRunway(atis.Runway);
-
-                SetState(
-                    callsignKey,
-                    TrainingState.Taxiing);
-
-                SetPendingReadback(
-                    callsignKey,
-                    "taxi",
-                    atis.Runway,
-                    profile.FullLengthHoldingPoint);
-
-                return Speak(
-                    spokenCallsign +
-                    ", roulez point d'attente " +
-                    profile.FullLengthHoldingPoint +
-                    " piste " +
-                    AviationFrenchNumbers.Runway(atis.Runway) +
-                    ". Q N H " +
-                    ExtractQnhSpeech(atis.Text) +
-                    ". Rappelez prêt.",
-                    "Roulage pleine longueur par défaut : " +
-                    profile.FullLengthHoldingPoint +
-                    ". A2/A3 restent disponibles pour de futurs scénarios de départ intermédiaire ; A5 nécessite une autorisation ATC.");
             }
 
             if (ContainsAny(
@@ -214,6 +188,74 @@ namespace OhControl.Atc
             return Speak(
                 spokenCallsign + ", Bron Sol, transmettez.",
                 "Demande non classée sur la fréquence Sol.");
+        }
+
+        private AtcResponse BuildTaxiClearance(
+            string callsignKey,
+            string spokenCallsign,
+            AtisBroadcast atis)
+        {
+            var profile =
+                LflyGroundProfile.ForRunway(
+                    atis.Runway);
+
+            SetState(
+                callsignKey,
+                TrainingState.Taxiing);
+
+            SetPendingReadback(
+                callsignKey,
+                "taxi",
+                atis.Runway,
+                profile.FullLengthHoldingPoint);
+
+            return Speak(
+                spokenCallsign +
+                ", roulez point d'attente " +
+                profile.FullLengthHoldingPoint +
+                " piste " +
+                AviationFrenchNumbers.Runway(
+                    atis.Runway) +
+                ". Q N H " +
+                ExtractQnhSpeech(
+                    atis.Text) +
+                ". Rappelez prêt.",
+                "Demande de départ reconnue. Roulage pleine longueur vers " +
+                profile.FullLengthHoldingPoint +
+                ".");
+        }
+
+        private static bool IsGroundDepartureRequest(
+            string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            return ContainsAny(
+                text,
+                "demande roulage",
+                "roulage",
+                "consignes de roulage",
+                "taxi",
+                "pret au roulage",
+                "tour de piste",
+                "tours de piste",
+                "faire des tours",
+                "faire un tour de piste",
+                "circuit local",
+                "circuits locaux",
+                "vol local",
+                "depart local",
+                "demande depart",
+                "demande de depart",
+                "clairance depart",
+                "clairance de depart",
+                "demande clairance",
+                "demande une clairance",
+                "pour des tours de piste",
+                "pour tours de piste");
         }
 
         private AtcResponse HandleTower(
