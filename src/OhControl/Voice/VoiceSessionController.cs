@@ -44,6 +44,7 @@ namespace OhControl.Voice
 
         private RadioStation _currentStation;
         private CancellationTokenSource _atisCancellation;
+        private CancellationTokenSource _controllerFollowUpCancellation;
         private bool _collisionDetected;
         private string _activeRunway = "16";
 
@@ -328,6 +329,7 @@ namespace OhControl.Voice
         public void Dispose()
         {
             CancelAtis();
+            CancelControllerFollowUp();
 
             _pushToTalk.Pressed -= OnPttPressed;
             _pushToTalk.Released -= OnPttReleased;
@@ -420,6 +422,7 @@ namespace OhControl.Voice
             _audioPlayer.Stop();
             _remotePilotAudioPlayer.Reset();
             CancelAtis();
+            CancelControllerFollowUp();
 
             StationChanged?.Invoke(
                 _currentStation == null
@@ -562,6 +565,8 @@ namespace OhControl.Voice
                         response.Feedback);
                 }
 
+                ScheduleControllerFollowUp(response);
+
                 if (string.IsNullOrWhiteSpace(response.Text))
                 {
                     StatusChanged?.Invoke(
@@ -606,6 +611,170 @@ namespace OhControl.Voice
             {
                 _transmissionGate.Release();
             }
+        }
+
+        private void ScheduleControllerFollowUp(
+            AtcResponse response)
+        {
+            if (response == null ||
+                !response.ControllerFollowUpDelaySeconds.HasValue ||
+                response.ControllerFollowUpDelaySeconds.Value <= 0)
+            {
+                return;
+            }
+
+            CancelControllerFollowUp();
+
+            var cancellation =
+                new CancellationTokenSource();
+
+            _controllerFollowUpCancellation =
+                cancellation;
+
+            _ = RunControllerFollowUpAsync(
+                response.ControllerFollowUpDelaySeconds.Value,
+                cancellation);
+        }
+
+        private async Task RunControllerFollowUpAsync(
+            int delaySeconds,
+            CancellationTokenSource cancellation)
+        {
+            try
+            {
+                await Task.Delay(
+                    TimeSpan.FromSeconds(delaySeconds),
+                    cancellation.Token)
+                    .ConfigureAwait(false);
+
+                while (!cancellation.IsCancellationRequested &&
+                       (_microphone.IsRecording ||
+                        IsCurrentFrequencyBusy()))
+                {
+                    await Task.Delay(
+                        500,
+                        cancellation.Token)
+                        .ConfigureAwait(false);
+                }
+
+                if (cancellation.IsCancellationRequested ||
+                    _currentStation == null ||
+                    _currentStation.Kind !=
+                    RadioStationKind.Tower ||
+                    !CanReceiveCurrentFrequency())
+                {
+                    return;
+                }
+
+                await _transmissionGate.WaitAsync(
+                    cancellation.Token)
+                    .ConfigureAwait(false);
+
+                AtcResponse followUp = null;
+
+                try
+                {
+                    followUp =
+                        _atcEngine.BuildScheduledFollowUp(
+                            _settings.PilotCallsign,
+                            _currentStation,
+                            _latestTelemetry);
+
+                    if (followUp == null)
+                    {
+                        return;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(
+                        followUp.Feedback))
+                    {
+                        FeedbackGenerated?.Invoke(
+                            followUp.Feedback);
+                    }
+
+                    if (string.IsNullOrWhiteSpace(
+                        followUp.Text))
+                    {
+                        return;
+                    }
+
+                    ControllerTextGenerated?.Invoke(
+                        followUp.Text);
+
+                    await _multiplayer
+                        .BroadcastAtcResponseAsync(
+                            followUp.Text,
+                            CurrentFrequencyMhz,
+                            _settings.PilotCallsign)
+                        .ConfigureAwait(false);
+
+                    StatusChanged?.Invoke(
+                        "Le contrôleur vous rappelle…");
+
+                    byte[] audio =
+                        await _elevenLabs.SynthesizeAsync(
+                            followUp.Text,
+                            cancellation.Token)
+                        .ConfigureAwait(false);
+
+                    await _audioPlayer.PlayAsync(
+                        audio,
+                        cancellation.Token,
+                        CurrentSignalQuality)
+                        .ConfigureAwait(false);
+
+                    StatusChanged?.Invoke(
+                        "Prêt — PTT " +
+                        PttDescription +
+                        ".");
+                }
+                finally
+                {
+                    _transmissionGate.Release();
+                }
+
+                if (followUp != null &&
+                    followUp.ControllerFollowUpDelaySeconds.HasValue &&
+                    !cancellation.IsCancellationRequested)
+                {
+                    ScheduleControllerFollowUp(
+                        followUp);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Station changed, app closed, or follow-up superseded.
+            }
+            catch (Exception ex)
+            {
+                StatusChanged?.Invoke(
+                    "Rappel contrôleur : " +
+                    ex.Message);
+            }
+        }
+
+        private void CancelControllerFollowUp()
+        {
+            CancellationTokenSource cancellation =
+                _controllerFollowUpCancellation;
+
+            _controllerFollowUpCancellation = null;
+
+            if (cancellation == null)
+            {
+                return;
+            }
+
+            try
+            {
+                cancellation.Cancel();
+            }
+            catch
+            {
+                // Best effort.
+            }
+
+            cancellation.Dispose();
         }
 
         private void OnRemotePlayersChanged(
