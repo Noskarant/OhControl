@@ -233,29 +233,44 @@ namespace OhControl.Atc
                 return false;
             }
 
-            return ContainsAny(
-                text,
-                "demande roulage",
-                "roulage",
-                "consignes de roulage",
-                "taxi",
-                "pret au roulage",
-                "tour de piste",
-                "tours de piste",
-                "faire des tours",
-                "faire un tour de piste",
-                "circuit local",
-                "circuits locaux",
-                "vol local",
-                "depart local",
-                "demande depart",
-                "demande de depart",
-                "clairance depart",
-                "clairance de depart",
-                "demande clairance",
-                "demande une clairance",
-                "pour des tours de piste",
-                "pour tours de piste");
+            bool taxiIntent =
+                ContainsAny(
+                    text,
+                    "demande roulage",
+                    "roulage",
+                    "consignes de roulage",
+                    "taxi",
+                    "pret au roulage");
+
+            if (taxiIntent)
+            {
+                return true;
+            }
+
+            bool circuitIntent =
+                ContainsAny(
+                    text,
+                    "tour de piste",
+                    "tours de piste",
+                    "circuit",
+                    "vol local",
+                    "depart local");
+
+            bool requestIntent =
+                ContainsAny(
+                    text,
+                    "demande",
+                    "voudrais",
+                    "souhaite",
+                    "souhaiterais",
+                    "pour ",
+                    "clairance",
+                    "depart",
+                    "faire",
+                    "effectuer");
+
+            return circuitIntent &&
+                   requestIntent;
         }
 
         private AtcResponse HandleTower(
