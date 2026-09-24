@@ -76,6 +76,70 @@ namespace OhControl.Audio
             }
         }
 
+        public async Task PlayTestToneAsync(
+            CancellationToken cancellationToken)
+        {
+            await _playLock.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            try
+            {
+                var generator = new SignalGenerator(
+                    44100,
+                    1)
+                {
+                    Type = SignalGeneratorType.Sin,
+                    Frequency = 750,
+                    Gain = 0.18
+                };
+
+                var tone = new OffsetSampleProvider(
+                    generator)
+                {
+                    Take = TimeSpan.FromMilliseconds(650)
+                };
+
+                var completion =
+                    new TaskCompletionSource<bool>(
+                        TaskCreationOptions.RunContinuationsAsynchronously);
+
+                using (var output = new WaveOutEvent
+                {
+                    DeviceNumber = _deviceNumber
+                })
+                using (cancellationToken.Register(
+                    () => output.Stop()))
+                {
+                    _activeOutput = output;
+
+                    output.Init(
+                        tone.ToWaveProvider());
+
+                    output.PlaybackStopped +=
+                        (_, args) =>
+                        {
+                            if (args.Exception != null)
+                            {
+                                completion.TrySetException(
+                                    args.Exception);
+                            }
+                            else
+                            {
+                                completion.TrySetResult(true);
+                            }
+                        };
+
+                    output.Play();
+                    await completion.Task.ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _activeOutput = null;
+                _playLock.Release();
+            }
+        }
+
         public void Stop()
         {
             try
