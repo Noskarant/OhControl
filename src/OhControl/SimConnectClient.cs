@@ -80,7 +80,16 @@ namespace OhControl
             catch (COMException ex)
             {
                 Cleanup();
-                Error?.Invoke("Unable to connect to MSFS 2024 through SimConnect: " + ex.Message);
+                Error?.Invoke(
+                    "Impossible de se connecter à MSFS 2024 via SimConnect : " +
+                    ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Cleanup();
+                Error?.Invoke(
+                    "SimConnect n'a pas pu démarrer : " +
+                    ex.Message);
             }
         }
 
