@@ -43,6 +43,12 @@ namespace OhControl
         private readonly Label _controllerTextValue = new Label();
         private readonly Label _feedbackValue = new Label();
 
+        private readonly FlowLayoutPanel _conversationLog =
+            new FlowLayoutPanel();
+
+        private readonly List<Control> _conversationEntries =
+            new List<Control>();
+
         private readonly Label _voiceConfigValue = new Label();
         private readonly Label _multiplayerStatusValue = new Label();
         private readonly Label _remotePlayersValue = new Label();
@@ -190,16 +196,16 @@ namespace OhControl
             };
 
             workspace.ColumnStyles.Add(
-                new ColumnStyle(SizeType.Percent, 43f));
+                new ColumnStyle(SizeType.Percent, 40f));
 
             workspace.ColumnStyles.Add(
-                new ColumnStyle(SizeType.Percent, 57f));
+                new ColumnStyle(SizeType.Percent, 60f));
 
             workspace.RowStyles.Add(
-                new RowStyle(SizeType.Percent, 57f));
+                new RowStyle(SizeType.Percent, 66f));
 
             workspace.RowStyles.Add(
-                new RowStyle(SizeType.Percent, 43f));
+                new RowStyle(SizeType.Percent, 34f));
 
             workspace.Controls.Add(BuildRadioCard(), 0, 0);
             workspace.Controls.Add(BuildConversationCard(), 1, 0);
@@ -447,55 +453,255 @@ namespace OhControl
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 5,
+                RowCount = 3,
                 BackColor = Color.Transparent
             };
 
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 38f));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 22f));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 20f));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 20f));
+            layout.RowStyles.Add(
+                new RowStyle(SizeType.AutoSize));
+
+            layout.RowStyles.Add(
+                new RowStyle(SizeType.AutoSize));
+
+            layout.RowStyles.Add(
+                new RowStyle(SizeType.Percent, 100f));
 
             layout.Controls.Add(
                 CreateSectionHeader("ÉCHANGES RADIO"),
                 0,
                 0);
 
+            var hint = new Label
+            {
+                Text =
+                    "Historique de la session · molette pour remonter les échanges",
+                AutoSize = true,
+                ForeColor = OhControlTheme.TextSecondary,
+                Font = OhControlTheme.Font(8.4f),
+                Margin = new Padding(0, 2, 0, 8)
+            };
+
             layout.Controls.Add(
-                CreateRadioMessage(
-                    "CONTRÔLEUR",
-                    _controllerTextValue,
-                    OhControlTheme.Radio),
+                hint,
                 0,
                 1);
 
+            _conversationLog.Dock = DockStyle.Fill;
+            _conversationLog.FlowDirection =
+                FlowDirection.TopDown;
+
+            _conversationLog.WrapContents = false;
+            _conversationLog.AutoScroll = true;
+            _conversationLog.BackColor =
+                OhControlTheme.Background;
+
+            _conversationLog.Padding =
+                new Padding(0, 0, 4, 4);
+
+            _conversationLog.Margin =
+                new Padding(0);
+
+            _conversationLog.TabStop = true;
+
+            _conversationLog.ClientSizeChanged +=
+                (_, __) =>
+                    ResizeConversationEntries();
+
             layout.Controls.Add(
-                CreateRadioMessage(
-                    "VOUS",
-                    _pilotTextValue,
-                    OhControlTheme.Accent),
+                _conversationLog,
                 0,
                 2);
 
-            layout.Controls.Add(
-                CreateRadioMessage(
-                    "AUTRE PILOTE",
-                    _remoteRadioValue,
-                    OhControlTheme.TextSecondary),
-                0,
-                3);
-
-            layout.Controls.Add(
-                CreateRadioMessage(
-                    "RETOUR PÉDAGOGIQUE",
-                    _feedbackValue,
-                    OhControlTheme.Warning),
-                0,
-                4);
-
             card.Controls.Add(layout);
             return card;
+        }
+
+        private void AppendConversationEntry(
+            string title,
+            string text,
+            Color accent)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            bool stayAtBottom =
+                IsConversationNearBottom();
+
+            var entry =
+                CreateConversationEntry(
+                    title,
+                    text.Trim(),
+                    accent);
+
+            _conversationEntries.Add(entry);
+            _conversationLog.Controls.Add(entry);
+
+            ResizeConversationEntry(entry);
+
+            if (stayAtBottom ||
+                _conversationEntries.Count <= 1)
+            {
+                _conversationLog.ScrollControlIntoView(
+                    entry);
+            }
+        }
+
+        private Panel CreateConversationEntry(
+            string title,
+            string text,
+            Color accent)
+        {
+            var panel = new Panel
+            {
+                AutoSize = true,
+                AutoSizeMode =
+                    AutoSizeMode.GrowAndShrink,
+                BackColor =
+                    OhControlTheme.SurfaceRaised,
+                Padding =
+                    new Padding(14, 11, 14, 12),
+                Margin =
+                    new Padding(0, 0, 0, 8)
+            };
+
+            var marker = new Panel
+            {
+                Dock = DockStyle.Left,
+                Width = 3,
+                BackColor = accent
+            };
+
+            var body = new TableLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode =
+                    AutoSizeMode.GrowAndShrink,
+                Dock = DockStyle.Top,
+                ColumnCount = 1,
+                RowCount = 2,
+                BackColor = Color.Transparent,
+                Padding = new Padding(9, 0, 0, 0)
+            };
+
+            body.ColumnStyles.Add(
+                new ColumnStyle(SizeType.Percent, 100f));
+
+            body.RowStyles.Add(
+                new RowStyle(SizeType.AutoSize));
+
+            body.RowStyles.Add(
+                new RowStyle(SizeType.AutoSize));
+
+            var caption = new Label
+            {
+                Text = title,
+                AutoSize = true,
+                Font =
+                    OhControlTheme.Font(
+                        7.8f,
+                        FontStyle.Bold),
+                ForeColor = accent,
+                Margin = new Padding(0, 0, 0, 5)
+            };
+
+            var value = new Label
+            {
+                Text = text,
+                AutoSize = true,
+                Font =
+                    OhControlTheme.Font(10.4f),
+                ForeColor =
+                    OhControlTheme.TextPrimary,
+                Margin = new Padding(0)
+            };
+
+            body.Controls.Add(
+                caption,
+                0,
+                0);
+
+            body.Controls.Add(
+                value,
+                0,
+                1);
+
+            panel.Tag = value;
+            panel.Controls.Add(body);
+            panel.Controls.Add(marker);
+
+            return panel;
+        }
+
+        private void ResizeConversationEntries()
+        {
+            foreach (Control entry in
+                     _conversationEntries.ToArray())
+            {
+                ResizeConversationEntry(entry);
+            }
+        }
+
+        private void ResizeConversationEntry(
+            Control entry)
+        {
+            if (entry == null ||
+                entry.IsDisposed)
+            {
+                return;
+            }
+
+            int scrollbarAllowance =
+                _conversationLog.VerticalScroll.Visible
+                    ? SystemInformation
+                        .VerticalScrollBarWidth
+                    : 0;
+
+            int width =
+                Math.Max(
+                    180,
+                    _conversationLog.ClientSize.Width -
+                    _conversationLog.Padding.Horizontal -
+                    scrollbarAllowance -
+                    4);
+
+            entry.Width = width;
+
+            var value =
+                entry.Tag as Label;
+
+            if (value != null)
+            {
+                value.MaximumSize =
+                    new Size(
+                        Math.Max(
+                            120,
+                            width - 48),
+                        0);
+            }
+        }
+
+        private bool IsConversationNearBottom()
+        {
+            if (!_conversationLog.AutoScroll)
+            {
+                return true;
+            }
+
+            int visibleHeight =
+                _conversationLog.ClientSize.Height;
+
+            int contentHeight =
+                _conversationLog.DisplayRectangle.Height;
+
+            int scrollTop =
+                Math.Abs(
+                    _conversationLog.AutoScrollPosition.Y);
+
+            return contentHeight <= visibleHeight ||
+                   contentHeight -
+                   (scrollTop + visibleHeight) <= 48;
         }
 
         private Control BuildTrafficCard()
@@ -673,6 +879,11 @@ namespace OhControl
             _controllerTextValue.Text = "En attente d’un appel radio";
             _feedbackValue.Text = "—";
 
+            AppendConversationEntry(
+                "OHCONTROL",
+                "En attente du premier échange radio.",
+                OhControlTheme.TextSecondary);
+
             _multiplayerStatusValue.Text =
                 "Session multijoueur désactivée";
 
@@ -694,16 +905,44 @@ namespace OhControl
                 Ui(() => UpdateStation(value));
 
             _voice.PilotTextReceived += value =>
-                Ui(() => _pilotTextValue.Text = value);
+                Ui(() =>
+                {
+                    _pilotTextValue.Text = value;
+                    AppendConversationEntry(
+                        "VOUS",
+                        value,
+                        OhControlTheme.Accent);
+                });
 
             _voice.RemoteRadioTextReceived += value =>
-                Ui(() => _remoteRadioValue.Text = value);
+                Ui(() =>
+                {
+                    _remoteRadioValue.Text = value;
+                    AppendConversationEntry(
+                        "AUTRE PILOTE",
+                        value,
+                        OhControlTheme.TextSecondary);
+                });
 
             _voice.ControllerTextGenerated += value =>
-                Ui(() => _controllerTextValue.Text = value);
+                Ui(() =>
+                {
+                    _controllerTextValue.Text = value;
+                    AppendConversationEntry(
+                        "CONTRÔLEUR",
+                        value,
+                        OhControlTheme.Radio);
+                });
 
             _voice.FeedbackGenerated += value =>
-                Ui(() => _feedbackValue.Text = value);
+                Ui(() =>
+                {
+                    _feedbackValue.Text = value;
+                    AppendConversationEntry(
+                        "RETOUR PÉDAGOGIQUE",
+                        value,
+                        OhControlTheme.Warning);
+                });
 
             _voice.MultiplayerStatusChanged += value =>
                 Ui(() => UpdateMultiplayerStatus(value));
