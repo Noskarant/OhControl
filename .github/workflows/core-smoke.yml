@@ -33,3 +33,17 @@ jobs:
 
       - name: Compile WinForms UI with isolated runtime stubs
         run: dotnet build tests/OhControl.UiSmoke/OhControl.UiSmoke.csproj --configuration Release
+
+      - name: Validate one-click launcher syntax
+        shell: powershell
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/Start-OhControl.ps1"),
+            [ref]$null,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            exit 1
+          }
