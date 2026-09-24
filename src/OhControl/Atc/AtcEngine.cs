@@ -186,7 +186,7 @@ namespace OhControl.Atc
             }
 
             return Speak(
-                spokenCallsign + ", Bron Sol, transmettez.",
+                spokenCallsign + ", Bron Sol, transmettez vos intentions.",
                 "Demande non classée sur la fréquence Sol.");
         }
 
@@ -626,7 +626,7 @@ namespace OhControl.Atc
 
                 return Speak(
                     spokenCallsign +
-                    ", contactez Bron Sol " +
+                    ", reçu, contactez Bron Sol " +
                     AviationFrenchNumbers.Frequency(121.705) +
                     ".",
                     "Après dégagement, passage sur 121.705 MHz.");
@@ -634,7 +634,7 @@ namespace OhControl.Atc
 
             return Speak(
                 spokenCallsign +
-                ", Bron Tour, transmettez.",
+                ", Bron Tour, transmettez vos intentions.",
                 "Transmission comprise, mais scénario non classé.");
         }
 
