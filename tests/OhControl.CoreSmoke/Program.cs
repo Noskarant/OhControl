@@ -87,6 +87,33 @@ internal static class Program
             Com1ActiveMhz = 121.705
         };
 
+        var naturalEngine =
+            new AtcEngine(atis);
+
+        AtcResponse naturalCircuitRequest =
+            naturalEngine.Handle(
+                ground,
+                "Bron Sol bonjour F-GABC au parking demande une clairance pour faire des tours de piste information Alpha",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            naturalCircuitRequest.Text,
+            "roulez point d'attente",
+            "Natural circuit/departure request on Ground must produce taxi instructions, not a generic transmettez.");
+
+        AtcResponse naturalCircuitRequestShort =
+            new AtcEngine(atis).Handle(
+                ground,
+                "Bron Sol bonjour F-GABC au parking pour des tours de piste",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            naturalCircuitRequestShort.Text,
+            "roulez point d'attente",
+            "A circuit request embedded in the initial call must be handled operationally.");
+
         AtcResponse taxi =
             engine.Handle(
                 ground,
