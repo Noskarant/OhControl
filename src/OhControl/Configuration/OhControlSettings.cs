@@ -14,6 +14,7 @@ namespace OhControl.Configuration
         public string AircraftType { get; set; } = "DR400";
         public int MicrophoneDeviceNumber { get; set; } = -1;
         public int OutputDeviceNumber { get; set; } = -1;
+        public int AtcVolumePercent { get; set; } = 65;
 
         public string PttKeyboardKey { get; set; } = "F12";
         public int PttJoystickDeviceId { get; set; } = -1;
@@ -79,6 +80,13 @@ namespace OhControl.Configuration
                 Environment.GetEnvironmentVariable("OHCONTROL_ROOM")
                 ?? settings.MultiplayerRoomCode;
 
+            settings.AtcVolumePercent =
+                Math.Max(
+                    0,
+                    Math.Min(
+                        100,
+                        settings.AtcVolumePercent));
+
             if (string.IsNullOrWhiteSpace(settings.PlayerId))
             {
                 settings.PlayerId = CreateStablePlayerId(settings.PilotCallsign);
@@ -89,6 +97,13 @@ namespace OhControl.Configuration
 
         public void Save()
         {
+            AtcVolumePercent =
+                Math.Max(
+                    0,
+                    Math.Min(
+                        100,
+                        AtcVolumePercent));
+
             if (string.IsNullOrWhiteSpace(PlayerId))
             {
                 PlayerId = CreateStablePlayerId(PilotCallsign);
