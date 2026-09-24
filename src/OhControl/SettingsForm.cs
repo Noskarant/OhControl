@@ -184,7 +184,7 @@ namespace OhControl
         {
             var card = new AviationCard { Dock = DockStyle.Fill };
 
-            var layout = CreateFormLayout(8);
+            var layout = CreateFormLayout(7);
             AddSectionHeader(layout, 0, "PILOTE & VOIX");
 
             AddField(
@@ -232,7 +232,7 @@ namespace OhControl
         {
             var card = new AviationCard { Dock = DockStyle.Fill };
 
-            var layout = CreateFormLayout(7);
+            var layout = CreateFormLayout(8);
             AddSectionHeader(layout, 0, "AUDIO & PTT");
 
             AddField(
