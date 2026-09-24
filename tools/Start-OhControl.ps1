@@ -3,8 +3,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+
 $root = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $root "src\OhControl\OhControl.csproj"
+$toolsRoot = Join-Path $root ".ohcontrol-tools"
+$localDotnetRoot = Join-Path $toolsRoot "dotnet"
+$localDotnet = Join-Path $localDotnetRoot "dotnet.exe"
+$dotnetInstallScript = Join-Path $toolsRoot "dotnet-install.ps1"
 
 Write-Host ""
 Write-Host "OhControl" -ForegroundColor Cyan
@@ -28,26 +34,46 @@ function Find-MsfsSdk {
     return $null
 }
 
-function Find-MsBuild {
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+function Get-UsableDotnet {
+    if (Test-Path $localDotnet) {
+        return $localDotnet
+    }
 
-    if (Test-Path $vswhere) {
-        $found = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe |
-            Select-Object -First 1
+    $systemDotnet = Get-Command dotnet -ErrorAction SilentlyContinue
 
-        if ($found -and (Test-Path $found)) {
-            return $found
+    if ($systemDotnet) {
+        try {
+            $sdks = & $systemDotnet.Source --list-sdks 2>$null
+            if ($LASTEXITCODE -eq 0 -and $sdks) {
+                return $systemDotnet.Source
+            }
+        }
+        catch {
         }
     }
 
-    $known = @(
-        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe",
-        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe",
-        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe",
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
-    )
+    return $null
+}
 
-    return $known | Where-Object { Test-Path $_ } | Select-Object -First 1
+function Install-LocalDotnetSdk {
+    New-Item -ItemType Directory -Force -Path $toolsRoot | Out-Null
+    New-Item -ItemType Directory -Force -Path $localDotnetRoot | Out-Null
+
+    Write-Host ""
+    Write-Host "Installation automatique du composant .NET necessaire..." -ForegroundColor Cyan
+    Write-Host "Une seule fois, uniquement dans le dossier OhControl." -ForegroundColor DarkGray
+
+    if (-not (Test-Path $dotnetInstallScript)) {
+        Invoke-WebRequest -Uri "https://dot.net/v1/dotnet-install.ps1" -OutFile $dotnetInstallScript -UseBasicParsing
+    }
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $dotnetInstallScript -Channel "8.0" -InstallDir $localDotnetRoot -NoPath
+
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $localDotnet)) {
+        throw "Impossible d'installer automatiquement le SDK .NET local."
+    }
+
+    return $localDotnet
 }
 
 $sdk = Find-MsfsSdk
@@ -80,36 +106,35 @@ $exe = $outputCandidates | Where-Object { Test-Path $_ } | Select-Object -First 
 if ($Rebuild -or -not $exe) {
     Write-Host "Preparation d'OhControl..." -ForegroundColor Cyan
 
-    $msbuild = Find-MsBuild
+    $dotnet = Get-UsableDotnet
 
-    if ($msbuild) {
-        & $msbuild $project /restore /m /p:Configuration=Release /p:Platform=x64 /p:MSFS2024SdkPath="$sdk" /verbosity:minimal
-
-        if ($LASTEXITCODE -ne 0) {
-            throw "La compilation OhControl a echoue."
-        }
+    if (-not $dotnet) {
+        $dotnet = Install-LocalDotnetSdk
     }
-    elseif (Get-Command dotnet -ErrorAction SilentlyContinue) {
-        & dotnet build $project -c Release -p:PlatformTarget=x64 -p:MSFS2024SdkPath="$sdk"
 
-        if ($LASTEXITCODE -ne 0) {
-            throw "La compilation OhControl a echoue. Installe Visual Studio Build Tools / Desktop .NET puis relance."
-        }
-    }
-    else {
+    Write-Host ".NET SDK : OK" -ForegroundColor Green
+
+    & $dotnet build $project --configuration Release --nologo -p:PlatformTarget=x64 -p:MSFS2024SdkPath="$sdk"
+
+    if ($LASTEXITCODE -ne 0) {
         Write-Host ""
-        Write-Host "Outil de compilation introuvable." -ForegroundColor Yellow
-        Write-Host "Installe Visual Studio 2022 ou Build Tools avec 'Desktop .NET', puis relance."
+        Write-Host "La compilation OhControl a echoue." -ForegroundColor Red
+        Write-Host "Fais une capture de cette fenetre et envoie-la dans le chat." -ForegroundColor Yellow
         Read-Host "Appuie sur Entree pour fermer"
-        exit 3
+        exit 4
     }
 
     $exe = $outputCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 
 if (-not $exe) {
-    throw "OhControl.exe n'a pas ete trouve apres compilation."
+    Write-Host ""
+    Write-Host "OhControl.exe n'a pas ete trouve apres compilation." -ForegroundColor Red
+    Read-Host "Appuie sur Entree pour fermer"
+    exit 5
 }
 
+Write-Host "OhControl : pret" -ForegroundColor Green
 Write-Host "Lancement..." -ForegroundColor Green
+
 Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe)
