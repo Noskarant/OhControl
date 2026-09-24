@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="System.Net.Http" />
     <Reference Include="Microsoft.FlightSimulator.SimConnect">
       <HintPath>$(MSFS2024SdkPath)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll</HintPath>
       <Private>false</Private>
