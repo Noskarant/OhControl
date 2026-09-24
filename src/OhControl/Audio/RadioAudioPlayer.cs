@@ -14,11 +14,20 @@ namespace OhControl.Audio
             new SemaphoreSlim(1, 1);
 
         private readonly int _deviceNumber;
+        private readonly float _volumeScalar;
         private WaveOutEvent _activeOutput;
 
-        public RadioAudioPlayer(int deviceNumber = -1)
+        public RadioAudioPlayer(
+            int deviceNumber = -1,
+            int volumePercent = 65)
         {
             _deviceNumber = deviceNumber;
+            _volumeScalar =
+                Math.Max(
+                    0f,
+                    Math.Min(
+                        1f,
+                        volumePercent / 100f));
         }
 
         public async Task PlayAsync(
@@ -61,7 +70,7 @@ namespace OhControl.Audio
                             30,
                             0.085);
 
-                    var sequence =
+                    ISampleProvider sequence =
                         new ConcatenatingSampleProvider(
                             new[]
                             {
@@ -69,6 +78,13 @@ namespace OhControl.Audio
                                 speech,
                                 clickOut
                             });
+
+                    sequence =
+                        new VolumeSampleProvider(
+                            sequence)
+                        {
+                            Volume = _volumeScalar
+                        };
 
                     var completion =
                         new TaskCompletionSource<bool>(
