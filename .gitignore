@@ -13,3 +13,6 @@ TestResults/
 *.log
 .env
 ohcontrol.local.json
+
+# Local launcher toolchain
+.ohcontrol-tools/
