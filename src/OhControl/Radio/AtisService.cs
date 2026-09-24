@@ -9,6 +9,7 @@ namespace OhControl.Radio
         public string CacheKey { get; set; }
         public string Information { get; set; }
         public string Runway { get; set; }
+        public int Qnh { get; set; }
         public string Text { get; set; }
     }
 
@@ -98,6 +99,7 @@ namespace OhControl.Radio
             {
                 Information = information,
                 Runway = runway,
+                Qnh = qnh,
                 Text = text,
                 CacheKey = ComputeHash(text)
             };
