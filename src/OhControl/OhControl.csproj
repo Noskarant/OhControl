@@ -26,11 +26,16 @@
   </ItemGroup>
 
   <Target Name="CopySimConnectNextToExecutable" AfterTargets="Build">
+    <ItemGroup>
+      <SimConnectRuntimeFiles Include="$(MSFS2024SdkPath)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll" />
+      <SimConnectRuntimeFiles Include="$(MSFS2024SdkPath)\SimConnect SDK\lib\SimConnect.dll" />
+    </ItemGroup>
+
     <Copy
-      SourceFiles="$(MSFS2024SdkPath)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll"
+      SourceFiles="@(SimConnectRuntimeFiles)"
       DestinationFolder="$(TargetDir)"
       SkipUnchangedFiles="true"
-      Condition="Exists('$(MSFS2024SdkPath)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll')" />
+      Condition="Exists('$(MSFS2024SdkPath)\SimConnect SDK\lib\managed\Microsoft.FlightSimulator.SimConnect.dll') and Exists('$(MSFS2024SdkPath)\SimConnect SDK\lib\SimConnect.dll')" />
   </Target>
 
   <Target Name="CheckSimConnectSdk" BeforeTargets="ResolveReferences">
