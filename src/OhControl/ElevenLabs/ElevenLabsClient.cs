@@ -15,6 +15,8 @@ namespace OhControl.ElevenLabs
 {
     public sealed class ElevenLabsClient : IDisposable
     {
+        private const string TtsLanguageCode = "fr";
+        private const string TtsCacheVersion = "fr-radio-v2";
         private readonly HttpClient _httpClient = new HttpClient();
         private readonly string _cacheDirectory;
         private OhControlSettings _settings;
@@ -129,7 +131,7 @@ namespace OhControl.ElevenLabs
             {
                 ["text"] = text,
                 ["model_id"] = "eleven_flash_v2_5",
-                ["language_code"] = "fr",
+                ["language_code"] = TtsLanguageCode,
                 ["voice_settings"] = new JObject
                 {
                     ["stability"] = 0.48,
@@ -193,7 +195,13 @@ namespace OhControl.ElevenLabs
         private string GetCachePath(string text)
         {
             string source =
-                _settings.ElevenLabsVoiceId + "|eleven_flash_v2_5|" + text;
+                _settings.ElevenLabsVoiceId +
+                "|eleven_flash_v2_5|" +
+                TtsLanguageCode +
+                "|" +
+                TtsCacheVersion +
+                "|" +
+                text;
 
             using (var sha = SHA256.Create())
             {
