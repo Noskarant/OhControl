@@ -70,7 +70,8 @@ namespace OhControl.Voice
             _pushToTalk = new PttInputController(_settings);
             _audioPlayer =
                 new RadioAudioPlayer(
-                    _settings.OutputDeviceNumber);
+                    _settings.OutputDeviceNumber,
+                    _settings.AtcVolumePercent);
 
             _remotePilotAudioPlayer =
                 new RemotePilotAudioPlayer(
@@ -310,7 +311,8 @@ namespace OhControl.Voice
 
             _audioPlayer =
                 new RadioAudioPlayer(
-                    _settings.OutputDeviceNumber);
+                    _settings.OutputDeviceNumber,
+                    _settings.AtcVolumePercent);
 
             _remotePilotAudioPlayer =
                 new RemotePilotAudioPlayer(
