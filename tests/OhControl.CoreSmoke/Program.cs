@@ -12,6 +12,7 @@ internal static class Program
         {
             VerifyGroundProfile();
             VerifyIdentifierSpeech();
+            VerifyFrequencySpeech();
             VerifyReportingPoints();
             VerifyAtcFlow();
 
@@ -45,6 +46,24 @@ internal static class Program
         Expect(
             AviationFrenchNumbers.Identifier("TN2") == "Tango November deux",
             "Compound taxiway identifiers must use ICAO spelling and French digits.");
+    }
+
+    private static void VerifyFrequencySpeech()
+    {
+        Expect(
+            AviationFrenchNumbers.Frequency(118.100) ==
+            "un, un, huit décimale un",
+            "118.100 must keep both leading 'un' words and omit trailing double zero.");
+
+        Expect(
+            AviationFrenchNumbers.Frequency(121.705) ==
+            "un, deux, un décimale sept, zéro, cinq",
+            "121.705 must be spoken digit by digit.");
+
+        Expect(
+            AviationFrenchNumbers.Frequency(128.130) ==
+            "un, deux, huit décimale un, trois, zéro",
+            "128.130 must preserve all three decimal digits.");
     }
 
     private static void VerifyReportingPoints()
