@@ -22,6 +22,21 @@ namespace OhControl.Radio
                 ['9'] = "neuf"
             };
 
+        private static readonly IReadOnlyDictionary<char, string> FrequencyDigits =
+            new Dictionary<char, string>
+            {
+                ['0'] = "zéro",
+                ['1'] = "unité",
+                ['2'] = "deux",
+                ['3'] = "trois",
+                ['4'] = "quatre",
+                ['5'] = "cinq",
+                ['6'] = "six",
+                ['7'] = "sept",
+                ['8'] = "huit",
+                ['9'] = "neuf"
+            };
+
         private static readonly IReadOnlyDictionary<char, string> IdentifierAlphabet =
             new Dictionary<char, string>
             {
@@ -132,7 +147,7 @@ namespace OhControl.Radio
                     ", ",
                     parts[0]
                         .Select(
-                            c => Digits[c]));
+                            c => FrequencyDigits[c]));
 
             string decimals =
                 parts[1];
@@ -152,7 +167,7 @@ namespace OhControl.Radio
                    string.Join(
                        ", ",
                        decimals.Select(
-                           c => Digits[c]));
+                           c => FrequencyDigits[c]));
         }
     }
 }
