@@ -244,6 +244,11 @@ internal static class Program
             "Bron Tour",
             "Ground should transfer a ready aircraft to Tower.");
 
+        ExpectContains(
+            ready.Text,
+            "au revoir",
+            "Every Ground-to-Tower frequency handoff should end with au revoir.");
+
         AtcResponse frequencyReadback =
             engine.Handle(
                 ground,
@@ -255,6 +260,38 @@ internal static class Program
             frequencyReadback.Text,
             "au revoir",
             "Frequency readback with goodbye should close the Ground exchange naturally.");
+
+        var combinedReadyEngine =
+            new AtcEngine(atis);
+
+        AtcResponse combinedTaxi =
+            combinedReadyEngine.Handle(
+                ground,
+                "Bron Sol F-GABC demande roulage pour tours de piste",
+                "F-GABC",
+                telemetry);
+
+        AtcResponse combinedReady =
+            combinedReadyEngine.Handle(
+                ground,
+                "F-GABC point d'attente A1 piste un six QNH 1018, on est prêt au départ",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            combinedReady.Text,
+            "Bron Tour",
+            "Combined taxi readback and ready call must immediately trigger the Tower handoff.");
+
+        ExpectContains(
+            combinedReady.Text,
+            "unité, unité, huit décimale unité",
+            "Ground-to-Tower handoff must include the spoken 118.100 frequency.");
+
+        ExpectContains(
+            combinedReady.Text,
+            "au revoir",
+            "Combined ready handoff must end with au revoir.");
 
         var spokenReadbackEngine =
             new AtcEngine(atis);
