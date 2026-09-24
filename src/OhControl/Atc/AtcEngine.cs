@@ -32,6 +32,8 @@ namespace OhControl.Atc
             public string Kind { get; set; }
             public string Runway { get; set; }
             public string HoldingPoint { get; set; }
+            public int? Qnh { get; set; }
+            public double? FrequencyMhz { get; set; }
         }
 
         private readonly AtisService _atisService;
@@ -118,6 +120,16 @@ namespace OhControl.Atc
                     readback);
 
                 return readback;
+            }
+
+            AtcResponse courtesy =
+                TryHandleCourtesyOrAcknowledgement(
+                    spokenCallsign,
+                    normalized);
+
+            if (courtesy != null)
+            {
+                return courtesy;
             }
 
             AtcResponse response =
@@ -282,6 +294,14 @@ namespace OhControl.Atc
                     callsignKey,
                     TrainingState.HoldingPoint);
 
+                SetPendingReadback(
+                    callsignKey,
+                    "frequency",
+                    null,
+                    null,
+                    null,
+                    118.100);
+
                 return Speak(
                     spokenCallsign +
                     ", reçu, contactez Bron Tour " +
@@ -340,7 +360,8 @@ namespace OhControl.Atc
                 callsignKey,
                 "taxi",
                 atis.Runway,
-                profile.FullLengthHoldingPoint);
+                profile.FullLengthHoldingPoint,
+                atis.Qnh);
 
             return Speak(
                 spokenCallsign +
@@ -757,6 +778,14 @@ namespace OhControl.Atc
                     callsignKey,
                     TrainingState.Landed);
 
+                SetPendingReadback(
+                    callsignKey,
+                    "frequency",
+                    null,
+                    null,
+                    null,
+                    121.705);
+
                 return Speak(
                     spokenCallsign +
                     ", reçu, contactez Bron Sol " +
@@ -1116,6 +1145,13 @@ namespace OhControl.Atc
             string spokenCallsign,
             PendingReadback pending)
         {
+            string qnhText =
+                pending.Qnh.HasValue
+                    ? ", Q N H " +
+                      AviationFrenchNumbers.DigitsOnly(
+                          pending.Qnh.Value)
+                    : "";
+
             return Speak(
                 spokenCallsign +
                 ", je répète, roulez point d'attente " +
@@ -1124,8 +1160,9 @@ namespace OhControl.Atc
                 ", piste " +
                 AviationFrenchNumbers.Runway(
                     pending.Runway) +
+                qnhText +
                 ".",
-                "Collationnement roulage incomplet : reprends le point d'attente et la piste.");
+                "Collationnement roulage incomplet : reprends le point d'attente, la piste et le QNH.");
         }
 
         private MultiplayerPlayerState FindTraffic(
@@ -1185,7 +1222,9 @@ namespace OhControl.Atc
             string callsign,
             string kind,
             string runway,
-            string holdingPoint)
+            string holdingPoint,
+            int? qnh = null,
+            double? frequencyMhz = null)
         {
             _pendingReadbacks[
                 NormalizeCallsignKey(
@@ -1194,8 +1233,9 @@ namespace OhControl.Atc
                 {
                     Kind = kind,
                     Runway = runway,
-                    HoldingPoint =
-                        holdingPoint
+                    HoldingPoint = holdingPoint,
+                    Qnh = qnh,
+                    FrequencyMhz = frequencyMhz
                 };
         }
 
@@ -1249,12 +1289,21 @@ namespace OhControl.Atc
             }
 
             string compact =
-                (text ?? "")
+                Normalize(text)
+                    .Replace(" ", "");
+
+            string spoken =
+                Normalize(
+                    AviationFrenchNumbers.Runway(
+                        runway))
                     .Replace(" ", "");
 
             return compact.Contains(
                        "piste" + runway) ||
-                   compact.Contains(runway);
+                   compact.Contains(runway) ||
+                   compact.Contains(
+                       "piste" + spoken) ||
+                   compact.Contains(spoken);
         }
 
         private static bool LooksLikeReadback(
