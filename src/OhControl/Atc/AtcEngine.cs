@@ -808,14 +808,10 @@ namespace OhControl.Atc
                     callsignKey,
                     TrainingState.Departed);
 
-                return new AtcResponse
-                {
-                    Text =
-                        spokenCallsign +
-                        ", quittez la fréquence.",
-                    Feedback =
-                        "Clôture des communications en sortie de circuit."
-                };
+                return Speak(
+                    spokenCallsign +
+                    ", quittez la fréquence, au revoir.",
+                    "Clôture des communications en sortie de circuit.");
             }
 
             if (ContainsAny(
