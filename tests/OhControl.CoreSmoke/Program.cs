@@ -169,6 +169,36 @@ internal static class Program
             "Alpha un",
             "RWY 16 taxi clearance should speak A1 as Alpha un.");
 
+        AtcResponse groundRepeat =
+            engine.Handle(
+                ground,
+                "Bron Sol F-GABC répétez s'il vous plaît",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            groundRepeat.Text,
+            "je répète",
+            "Ground repeat request must replay the last ATC transmission.");
+
+        ExpectContains(
+            groundRepeat.Text,
+            "Alpha un",
+            "Repeated Ground transmission must preserve the spoken holding point.");
+
+        AtcResponse groundRepeatAgain =
+            engine.Handle(
+                ground,
+                "F-GABC pouvez-vous répéter",
+                "F-GABC",
+                telemetry);
+
+        Expect(
+            groundRepeatAgain.Text.IndexOf(
+                "je répète, je répète",
+                StringComparison.OrdinalIgnoreCase) < 0,
+            "Repeated repeat requests must not recursively repeat the previous repeat wrapper.");
+
         AtcResponse taxiReadback =
             engine.Handle(
                 ground,
@@ -237,6 +267,23 @@ internal static class Program
             lineUp.Text,
             "alignez-vous et attendez",
             "Tower should issue line-up-and-wait.");
+
+        AtcResponse towerRepeat =
+            engine.Handle(
+                tower,
+                "Bron Tour F-GABC répétez",
+                "F-GABC",
+                telemetry);
+
+        ExpectContains(
+            towerRepeat.Text,
+            "je répète",
+            "Tower repeat request must replay the last ATC transmission.");
+
+        ExpectContains(
+            towerRepeat.Text,
+            "alignez-vous et attendez",
+            "Tower repeat must preserve the operational instruction.");
 
         AtcResponse takeoff =
             engine.Handle(
