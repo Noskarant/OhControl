@@ -58,6 +58,16 @@ namespace OhControl.Audio
                             reader.ToSampleProvider(),
                             quality);
 
+                    // Open the AM carrier before speech, and let it
+                    // hiss briefly after speech before squelch closes.
+                    ISampleProvider carrierLead =
+                        CreateCarrierHiss(speech.WaveFormat, quality,
+                            VhfNoiseProfile.CarrierLeadMilliseconds);
+
+                    ISampleProvider carrierTail =
+                        CreateCarrierHiss(speech.WaveFormat, quality,
+                            VhfNoiseProfile.CarrierTailMilliseconds);
+
                     var clickIn =
                         CreateSquelchClick(
                             speech.WaveFormat,
@@ -75,7 +85,9 @@ namespace OhControl.Audio
                             new[]
                             {
                                 clickIn,
+                                carrierLead,
                                 speech,
+                                carrierTail,
                                 clickOut
                             });
 
@@ -241,12 +253,37 @@ namespace OhControl.Audio
             };
         }
 
+        private static ISampleProvider CreateCarrierHiss(
+            WaveFormat format,
+            double quality,
+            int milliseconds)
+        {
+            // Render a little of the same filtered hiss without spoken
+            // words. This is only heard while the radio carrier is open.
+            var silence = new SignalGenerator(
+                format.SampleRate, format.Channels)
+            {
+                Type = SignalGeneratorType.Sin,
+                Frequency = 1000,
+                Gain = 0
+            };
+
+            return new VhfRadioSampleProvider(
+                new OffsetSampleProvider(silence)
+                {
+                    Take = TimeSpan.FromMilliseconds(milliseconds)
+                },
+                quality);
+        }
+
         private sealed class VhfRadioSampleProvider :
             ISampleProvider
         {
             private readonly ISampleProvider _source;
             private readonly BiQuadFilter[] _highPass;
             private readonly BiQuadFilter[] _lowPass;
+            private readonly BiQuadFilter[] _noiseHighPass;
+            private readonly BiQuadFilter[] _noiseLowPass;
             private readonly Random _random =
                 new Random();
 
@@ -274,6 +311,9 @@ namespace OhControl.Audio
                     new BiQuadFilter[
                         WaveFormat.Channels];
 
+                _noiseHighPass = new BiQuadFilter[WaveFormat.Channels];
+                _noiseLowPass = new BiQuadFilter[WaveFormat.Channels];
+
                 float highPassHz =
                     (float)(
                         340.0 +
@@ -299,6 +339,15 @@ namespace OhControl.Audio
                             WaveFormat.SampleRate,
                             lowPassHz,
                             0.82f);
+
+                    _noiseHighPass[channel] =
+                        BiQuadFilter.HighPassFilter(
+                            WaveFormat.SampleRate,
+                            420f, 0.72f);
+                    _noiseLowPass[channel] =
+                        BiQuadFilter.LowPassFilter(
+                            WaveFormat.SampleRate,
+                            3600f, 0.72f);
                 }
             }
 
@@ -322,13 +371,10 @@ namespace OhControl.Audio
                     2.15 +
                     degradation * 1.15;
 
-                double hissLevel =
-                    0.0065 +
-                    degradation * 0.018;
-
-                double crackleChance =
-                    0.000025 +
-                    degradation * 0.00016;
+                // Continuous, band-limited carrier noise stays audible
+                // under the controller's speech, not only at start/end.
+                double hissLevel = VhfNoiseProfile.SpeechHiss(_quality);
+                double crackleChance = VhfNoiseProfile.CrackleChance(_quality);
 
                 for (int i = 0; i < read; i++)
                 {
@@ -374,21 +420,22 @@ namespace OhControl.Audio
                             slowFlutter) *
                         0.90;
 
-                    double hiss =
-                        (_random.NextDouble() *
-                         2.0 -
-                         1.0) *
-                        hissLevel;
+                    float whiteNoise = (float)(
+                        (_random.NextDouble() * 2.0 - 1.0) *
+                        hissLevel);
+
+                    double hiss = _noiseLowPass[channel].Transform(
+                        _noiseHighPass[channel].Transform(whiteNoise));
 
                     if (_burstEnvelope <= 0.0001 &&
                         _random.NextDouble() <
                         crackleChance)
                     {
                         _burstEnvelope =
-                            0.05 +
+                            0.015 +
                             _random.NextDouble() *
-                            (0.08 +
-                             degradation * 0.16);
+                            (0.025 +
+                             degradation * 0.09);
                     }
 
                     double crackle =

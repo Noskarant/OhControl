@@ -24,6 +24,7 @@
     <Compile Include="../../src/OhControl/Radio/RadioStation.cs" Link="Radio/RadioStation.cs" />
     <Compile Include="../../src/OhControl/ElevenLabs/ElevenV4Speech.cs" Link="ElevenLabs/ElevenV4Speech.cs" />
     <Compile Include="../../src/OhControl/Configuration/OhControlSettings.cs" Link="Configuration/OhControlSettings.cs" />
+    <Compile Include="../../src/OhControl/Audio/VhfNoiseProfile.cs" Link="Audio/VhfNoiseProfile.cs" />
     <Compile Include="../../src/OhControl/Voice/PttCaptureState.cs" Link="Voice/PttCaptureState.cs" />
     <Compile Include="../../src/OhControl/TelemetrySnapshot.cs" Link="TelemetrySnapshot.cs" />
   </ItemGroup>

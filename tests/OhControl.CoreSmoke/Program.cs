@@ -19,6 +19,7 @@ internal static class Program
             VerifyReportingPoints();
             VerifyAtcFlow();
             VerifyGroundHandoffOnlyAtHoldingPoint();
+            VerifyVhfNoiseProfile();
 
             Console.WriteLine("OhControl core smoke tests passed.");
             return 0;
@@ -287,6 +288,30 @@ internal static class Program
         Expect(
             nearest != null && nearest.Point.Code == "NW",
             "NW coordinate lookup failed.");
+    }
+
+    private static void VerifyVhfNoiseProfile()
+    {
+        double clear = OhControl.Audio.VhfNoiseProfile.SpeechHiss(1.0);
+        double weak = OhControl.Audio.VhfNoiseProfile.SpeechHiss(0.35);
+
+        Expect(clear >= 0.025 && clear <= 0.045,
+            "Clear VHF signal must keep audible but subtle static.");
+        Expect(weak > clear && weak < 0.09,
+            "Noise grows moderately for weak radio reception.");
+        Expect(OhControl.Audio.VhfNoiseProfile.CrackleChance(0.35) >
+               OhControl.Audio.VhfNoiseProfile.CrackleChance(1.0),
+            "Weak frequencies should crackle slightly more.");
+        Expect(OhControl.Audio.VhfNoiseProfile.CrackleChance(1.0) < 0.00002,
+            "Strong frequencies must not crackle continuously.");
+        Expect(OhControl.Audio.VhfNoiseProfile.CarrierLeadMilliseconds >= 70 &&
+               OhControl.Audio.VhfNoiseProfile.CarrierLeadMilliseconds <= 150,
+            "Radio carrier should open briefly before speech.");
+        Expect(OhControl.Audio.VhfNoiseProfile.CarrierTailMilliseconds >= 50 &&
+               OhControl.Audio.VhfNoiseProfile.CarrierTailMilliseconds <= 130,
+            "Carrier static should close shortly after speech.");
+        Expect(!double.IsNaN(OhControl.Audio.VhfNoiseProfile.SpeechHiss(double.NaN)),
+            "Invalid telemetry must not break the audio profile.");
     }
 
     private static void VerifyGroundHandoffOnlyAtHoldingPoint()
