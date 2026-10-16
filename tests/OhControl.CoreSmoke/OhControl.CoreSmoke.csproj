@@ -16,6 +16,8 @@
     <Compile Include="../../src/OhControl/Atc/AtcResponse.cs" Link="Atc/AtcResponse.cs" />
     <Compile Include="../../src/OhControl/Lfly/LflyAirport.cs" Link="Lfly/LflyAirport.cs" />
     <Compile Include="../../src/OhControl/Lfly/LflyGroundProfile.cs" Link="Lfly/LflyGroundProfile.cs" />
+    <Compile Include="../../src/OhControl/Lfly/LflyFlightPhaseDetector.cs" Link="Lfly/LflyFlightPhaseDetector.cs" />
+    <Compile Include="../../src/OhControl/Multiplayer/DirectMultiplayerSession.cs" Link="Multiplayer/DirectMultiplayerSession.cs" />
     <Compile Include="../../src/OhControl/Lfly/LflyReportingPoints.cs" Link="Lfly/LflyReportingPoints.cs" />
     <Compile Include="../../src/OhControl/Multiplayer/MultiplayerPlayerState.cs" Link="Multiplayer/MultiplayerPlayerState.cs" />
     <Compile Include="../../src/OhControl/Radio/AtisService.cs" Link="Radio/AtisService.cs" />
