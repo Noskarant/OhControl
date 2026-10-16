@@ -79,7 +79,9 @@ The wording follows the current DGAC/DSNA phraseology manual where implemented. 
 - 16 kHz mono microphone capture
 - ElevenLabs Scribe v2 French speech-to-text
 - aviation vocabulary prompting
-- ElevenLabs Flash v2.5 controller TTS
+- Eleven v4 dialogue TTS with identical professional ATC speech direction for Tower, Ground and ATIS
+- three optional service-specific Voice IDs (Tower required; Ground and ATIS fall back to Tower)
+- role-specific voice/audio cache isolation and French pronunciation correction for Bron
 - persistent local speech cache
 - VHF-style filtering, light saturation/noise and squelch clicks
 - ATIS loops automatically while tuned to 128.130

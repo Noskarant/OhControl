@@ -284,7 +284,8 @@ namespace OhControl
                 NewBody(
                     "OhControl utilise ElevenLabs pour comprendre tes appels radio et générer la voix du contrôleur."),
                 Field("Clé API ElevenLabs", "Elle ne sera jamais envoyée sur GitHub", _elevenKey),
-                Field("Voice ID", "La voix française choisie pour l’ATC", _elevenVoice),
+                Field("Voice ID Tour", "Voix par défaut de Tour, Sol et ATIS", _elevenVoice),
+                NewBody("Tu pourras attribuer une voix différente à Sol et à l’ATIS dans Réglages. Le ton et la diction resteront identiques."),
                 skip);
 
             card.Controls.Add(layout);
