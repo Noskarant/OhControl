@@ -18,6 +18,8 @@ namespace OhControl
         private readonly TextBox _aircraftType = new TextBox();
         private readonly TextBox _elevenKey = new TextBox();
         private readonly TextBox _elevenVoice = new TextBox();
+        private readonly TextBox _elevenGroundVoice = new TextBox();
+        private readonly TextBox _elevenAtisVoice = new TextBox();
 
         private readonly ComboBox _inputDevice = new ComboBox();
         private readonly ComboBox _outputDevice = new ComboBox();
@@ -50,7 +52,7 @@ namespace OhControl
             Text = "Réglages — OhControl";
             StartPosition = FormStartPosition.CenterParent;
             MinimumSize = new Size(860, 690);
-            Size = new Size(960, 760);
+            Size = new Size(960, 870);
             BackColor = OhControlTheme.Background;
             ForeColor = OhControlTheme.TextPrimary;
             Font = OhControlTheme.Font(9.5f);
@@ -83,10 +85,10 @@ namespace OhControl
                 new ColumnStyle(SizeType.Percent, 50f));
 
             content.RowStyles.Add(
-                new RowStyle(SizeType.Percent, 54f));
+                new RowStyle(SizeType.Percent, 65f));
 
             content.RowStyles.Add(
-                new RowStyle(SizeType.Percent, 46f));
+                new RowStyle(SizeType.Percent, 35f));
 
             content.Controls.Add(
                 BuildPilotVoiceCard(),
@@ -182,9 +184,16 @@ namespace OhControl
 
         private Control BuildPilotVoiceCard()
         {
-            var card = new AviationCard { Dock = DockStyle.Fill };
+            var card = new AviationCard
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true
+            };
 
-            var layout = CreateFormLayout(7);
+            // Fixed minimum row height prevents clipped labels on small screens.
+            var layout = CreateFormLayout(9);
+            layout.Dock = DockStyle.Top;
+            layout.Height = 420;
             AddSectionHeader(layout, 0, "PILOTE & VOIX");
 
             AddField(
@@ -220,9 +229,23 @@ namespace OhControl
             AddField(
                 layout,
                 6,
-                "Voice ID ATC",
-                "Voix utilisée pour le contrôleur",
+                "Voice ID Tour",
+                "Voix actuelle, obligatoire",
                 _elevenVoice);
+
+            AddField(
+                layout,
+                7,
+                "Voice ID Sol",
+                "Optionnel · vide = voix Tour",
+                _elevenGroundVoice);
+
+            AddField(
+                layout,
+                8,
+                "Voice ID ATIS",
+                "Optionnel · vide = voix Tour",
+                _elevenAtisVoice);
 
             card.Controls.Add(layout);
             return card;
@@ -447,6 +470,8 @@ namespace OhControl
             _elevenKey.UseSystemPasswordChar = true;
 
             _elevenVoice.Text = _settings.ElevenLabsVoiceId;
+            _elevenGroundVoice.Text = _settings.ElevenLabsGroundVoiceId;
+            _elevenAtisVoice.Text = _settings.ElevenLabsAtisVoiceId;
 
             _keyboardPtt.Text =
                 string.IsNullOrWhiteSpace(_capturedKeyboardKey)
@@ -492,6 +517,8 @@ namespace OhControl
                 _aircraftType,
                 _elevenKey,
                 _elevenVoice,
+                _elevenGroundVoice,
+                _elevenAtisVoice,
                 _supabaseUrl,
                 _supabaseKey,
                 _roomCode
@@ -1035,6 +1062,12 @@ namespace OhControl
 
             _settings.ElevenLabsVoiceId =
                 _elevenVoice.Text.Trim();
+
+            _settings.ElevenLabsGroundVoiceId =
+                _elevenGroundVoice.Text.Trim();
+
+            _settings.ElevenLabsAtisVoiceId =
+                _elevenAtisVoice.Text.Trim();
 
             if (_inputDevice.SelectedItem
                 is AudioDeviceInfo input)

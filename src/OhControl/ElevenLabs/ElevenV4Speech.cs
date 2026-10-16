@@ -12,7 +12,7 @@ namespace OhControl.ElevenLabs
     {
         public const string ModelId = "eleven_v4";
         public const string DictionaryVersion = "ohcontrol-bron-fr-ipa-v1";
-        public const string VoiceDirectionVersion = "fr-atc-delivery-v1";
+        public const string VoiceDirectionVersion = "fr-atc-shared-delivery-v2";
 
         public static JObject CreateDictionaryRequest()
         {
@@ -87,19 +87,12 @@ namespace OhControl.ElevenLabs
             if (string.IsNullOrWhiteSpace(operationalText))
                 throw new ArgumentException("Empty ATC message.");
 
-            string direction;
-            switch (mode)
-            {
-                case AtcVoiceMode.Ground:
-                    direction = "[calm, focused French ground air traffic controller, concise and natural radio delivery, steady measured pace, precise articulation] ";
-                    break;
-                case AtcVoiceMode.Atis:
-                    direction = "[neutral French aviation weather broadcast voice, clear and even pace, objective factual delivery, precise articulation] ";
-                    break;
-                default:
-                    direction = "[calm, confident French tower air traffic controller, concise and authoritative radio delivery, measured pace, crisp articulation, no dramatization] ";
-                    break;
-            }
+            // Same intonation, pacing and articulation for Tower, Ground and
+            // ATIS. The only role-dependent parameter is the selected voice ID.
+            const string direction =
+                "[calm, focused French air traffic controller, concise and natural " +
+                "VHF radio delivery, steady measured pace, clear precise articulation, " +
+                "neutral professional tone, no dramatization] ";
 
             string spokenText = operationalText;
             // Eleven v4 supports native /IPA/, so even restricted API keys
@@ -113,6 +106,30 @@ namespace OhControl.ElevenLabs
             }
 
             return direction + spokenText;
+        }
+
+        public static string SelectVoiceId(
+            string towerVoiceId,
+            string groundVoiceId,
+            string atisVoiceId,
+            AtcVoiceMode mode)
+        {
+            string tower = (towerVoiceId ?? "").Trim();
+            string ground = (groundVoiceId ?? "").Trim();
+            string atis = (atisVoiceId ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(tower))
+                throw new ArgumentException("Voice ID Tour manquant.");
+
+            switch (mode)
+            {
+                case AtcVoiceMode.Ground:
+                    return ground.Length > 0 ? ground : tower;
+                case AtcVoiceMode.Atis:
+                    return atis.Length > 0 ? atis : tower;
+                default:
+                    return tower;
+            }
         }
 
         public static JObject CreateSpeechRequest(

@@ -127,14 +127,18 @@ namespace OhControl.ElevenLabs
             }
 
             string apiKey = _settings.ElevenLabsApiKey;
-            string voiceId = _settings.ElevenLabsVoiceId.Trim();
+            string voiceId = ElevenV4Speech.SelectVoiceId(
+                _settings.ElevenLabsVoiceId,
+                _settings.ElevenLabsGroundVoiceId,
+                _settings.ElevenLabsAtisVoiceId,
+                mode);
 
             // Retrieve the dictionary first, then choose the matching cache.
             // Audio generated without IPA must never shadow corrected audio.
             JObject pronunciation = await GetPronunciationLocatorAsync(
                 apiKey, cancellationToken).ConfigureAwait(false);
 
-            string cachePath = GetCachePath(text, pronunciation != null, mode);
+            string cachePath = GetCachePath(text, pronunciation != null, mode, voiceId);
             if (File.Exists(cachePath))
             {
                 return File.ReadAllBytes(cachePath);
@@ -329,10 +333,10 @@ namespace OhControl.ElevenLabs
             }
         }
 
-        private string GetCachePath(string text, bool hasDictionary, AtcVoiceMode mode)
+        private string GetCachePath(string text, bool hasDictionary, AtcVoiceMode mode, string voiceId)
         {
             string source =
-                _settings.ElevenLabsVoiceId +
+                voiceId +
                 "|" + ElevenV4Speech.ModelId + "|" +
                 TtsLanguageCode +
                 "|" +

@@ -11,6 +11,7 @@ internal static class Program
         try
         {
             VerifyElevenV4Speech();
+            VerifyStationVoiceSelectionAndBackwardCompatibility();
             VerifyPttCaptureState();
             VerifyGroundProfile();
             VerifyIdentifierSpeech();
@@ -53,8 +54,8 @@ internal static class Program
         Expect((string)payload["inputs"][0]["voice_id"] == "existing-voice",
             "Must preserve existing voice ID.");
         string towerSpeech = (string)payload["inputs"][0]["text"];
-        Expect(towerSpeech.Contains("[calm, confident French tower air traffic controller"),
-            "Tower speech must use controlled, concise ATC delivery.");
+        Expect(towerSpeech.Contains("[calm, focused French air traffic controller"),
+            "All ATC voices must use the same professional radio delivery.");
         Expect(towerSpeech.EndsWith(message, StringComparison.Ordinal),
             "Voice tags must preserve the ATC clearance text.");
         Expect(!towerSpeech.Contains("/bʁɔ̃/"),
@@ -83,8 +84,8 @@ internal static class Program
             "F-GABC, Bron Sol, roulez au point d'attente Alpha un.",
             "existing-voice", locator, OhControl.ElevenLabs.AtcVoiceMode.Ground);
         Expect(((string)ground["inputs"][0]["text"]).Contains(
-            "[calm, focused French ground air traffic controller"),
-            "Ground must have an operational radio delivery.");
+            "[calm, focused French air traffic controller"),
+            "Ground must use the same radio delivery as Tower.");
         Expect(((string)ground["inputs"][0]["text"]).EndsWith(
             "roulez au point d'attente Alpha un.", StringComparison.Ordinal),
             "Ground clearance wording must remain unchanged.");
@@ -93,8 +94,8 @@ internal static class Program
             "Bron information Alpha, piste un six en service.",
             "existing-voice", locator, OhControl.ElevenLabs.AtcVoiceMode.Atis);
         Expect(((string)atis["inputs"][0]["text"]).Contains(
-            "[neutral French aviation weather broadcast voice"),
-            "ATIS must sound like neutral aeronautical information.");
+            "[calm, focused French air traffic controller"),
+            "ATIS must use the same delivery as Ground and Tower.");
 
         string phonetic = OhControl.ElevenLabs.ElevenV4Speech.PrepareSpeechText(
             "Bron Sol, Lebron, Bron-Tour, BRON.", false);
@@ -147,6 +148,76 @@ internal static class Program
             !OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
                 System.Net.HttpStatusCode.Unauthorized, "not-json"),
             "Do not mask unexpected authentication failures.");
+    }
+
+    private static void VerifyStationVoiceSelectionAndBackwardCompatibility()
+    {
+        var legacy = Newtonsoft.Json.JsonConvert.DeserializeObject<
+            OhControl.Configuration.OhControlSettings>(
+            "{\"ElevenLabsVoiceId\":\"old-tower-voice\",\"ElevenLabsApiKey\":\"test\"}");
+
+        Expect(legacy.IsElevenLabsConfigured,
+            "Legacy voice settings must remain configured.");
+        Expect(
+            OhControl.ElevenLabs.ElevenV4Speech.SelectVoiceId(
+                legacy.ElevenLabsVoiceId, legacy.ElevenLabsGroundVoiceId,
+                legacy.ElevenLabsAtisVoiceId, OhControl.ElevenLabs.AtcVoiceMode.Tower)
+                == "old-tower-voice",
+            "Legacy voice ID must remain Tower.");
+        Expect(
+            OhControl.ElevenLabs.ElevenV4Speech.SelectVoiceId(
+                legacy.ElevenLabsVoiceId, legacy.ElevenLabsGroundVoiceId,
+                legacy.ElevenLabsAtisVoiceId, OhControl.ElevenLabs.AtcVoiceMode.Ground)
+                == "old-tower-voice",
+            "Ground must use Tower voice if blank.");
+        Expect(
+            OhControl.ElevenLabs.ElevenV4Speech.SelectVoiceId(
+                legacy.ElevenLabsVoiceId, legacy.ElevenLabsGroundVoiceId,
+                legacy.ElevenLabsAtisVoiceId, OhControl.ElevenLabs.AtcVoiceMode.Atis)
+                == "old-tower-voice",
+            "ATIS must use Tower voice if blank.");
+
+        legacy.ElevenLabsGroundVoiceId = " ground-voice ";
+        legacy.ElevenLabsAtisVoiceId = " atis-voice ";
+        Expect(
+            OhControl.ElevenLabs.ElevenV4Speech.SelectVoiceId(
+                legacy.ElevenLabsVoiceId, legacy.ElevenLabsGroundVoiceId,
+                legacy.ElevenLabsAtisVoiceId, OhControl.ElevenLabs.AtcVoiceMode.Ground)
+                == "ground-voice",
+            "Ground must use its own selected voice.");
+        Expect(
+            OhControl.ElevenLabs.ElevenV4Speech.SelectVoiceId(
+                legacy.ElevenLabsVoiceId, legacy.ElevenLabsGroundVoiceId,
+                legacy.ElevenLabsAtisVoiceId, OhControl.ElevenLabs.AtcVoiceMode.Atis)
+                == "atis-voice",
+            "ATIS must use its own selected voice.");
+
+        var persisted = Newtonsoft.Json.JsonConvert.DeserializeObject<
+            OhControl.Configuration.OhControlSettings>(
+            Newtonsoft.Json.JsonConvert.SerializeObject(legacy));
+        Expect(persisted.ElevenLabsVoiceId == "old-tower-voice" &&
+               persisted.ElevenLabsGroundVoiceId == " ground-voice " &&
+               persisted.ElevenLabsAtisVoiceId == " atis-voice ",
+               "All three voice IDs must survive a JSON settings roundtrip.");
+
+        string sample = "F-GABC, Bron Tour, bonjour.";
+        var tower = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
+            sample, legacy.ElevenLabsVoiceId, null,
+            OhControl.ElevenLabs.AtcVoiceMode.Tower);
+        var ground = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
+            sample, "ground-voice", null,
+            OhControl.ElevenLabs.AtcVoiceMode.Ground);
+        var atis = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
+            sample, "atis-voice", null,
+            OhControl.ElevenLabs.AtcVoiceMode.Atis);
+        string sharedSpeech = (string)tower["inputs"][0]["text"];
+        Expect(sharedSpeech == (string)ground["inputs"][0]["text"] &&
+               sharedSpeech == (string)atis["inputs"][0]["text"],
+               "All three controllers must have IDENTICAL delivery settings.");
+        Expect((string)tower["inputs"][0]["voice_id"] == "old-tower-voice" &&
+               (string)ground["inputs"][0]["voice_id"] == "ground-voice" &&
+               (string)atis["inputs"][0]["voice_id"] == "atis-voice",
+               "The only difference between voices must be voice_id.");
     }
 
     private static void VerifyPttCaptureState()

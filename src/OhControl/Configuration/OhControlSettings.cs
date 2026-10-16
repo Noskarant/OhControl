@@ -8,7 +8,10 @@ namespace OhControl.Configuration
     {
         public bool FirstRunCompleted { get; set; }
         public string ElevenLabsApiKey { get; set; } = "";
+        // Existing voice ID is retained as the Tower/default voice (legacy-safe).
         public string ElevenLabsVoiceId { get; set; } = "";
+        public string ElevenLabsGroundVoiceId { get; set; } = "";
+        public string ElevenLabsAtisVoiceId { get; set; } = "";
         public string PilotCallsign { get; set; } = "F-GABC";
         public string PlayerDisplayName { get; set; } = Environment.MachineName;
         public string AircraftType { get; set; } = "DR400";
@@ -63,6 +66,14 @@ namespace OhControl.Configuration
             settings.ElevenLabsVoiceId =
                 Environment.GetEnvironmentVariable("OHCONTROL_ELEVENLABS_VOICE_ID")
                 ?? settings.ElevenLabsVoiceId;
+
+            settings.ElevenLabsGroundVoiceId =
+                Environment.GetEnvironmentVariable("OHCONTROL_ELEVENLABS_GROUND_VOICE_ID")
+                ?? settings.ElevenLabsGroundVoiceId;
+
+            settings.ElevenLabsAtisVoiceId =
+                Environment.GetEnvironmentVariable("OHCONTROL_ELEVENLABS_ATIS_VOICE_ID")
+                ?? settings.ElevenLabsAtisVoiceId;
 
             settings.PilotCallsign =
                 Environment.GetEnvironmentVariable("OHCONTROL_CALLSIGN")

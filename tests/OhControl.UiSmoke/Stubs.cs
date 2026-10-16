@@ -47,6 +47,8 @@ namespace OhControl.Configuration
         public bool FirstRunCompleted { get; set; }
         public string ElevenLabsApiKey { get; set; } = "";
         public string ElevenLabsVoiceId { get; set; } = "";
+        public string ElevenLabsGroundVoiceId { get; set; } = "";
+        public string ElevenLabsAtisVoiceId { get; set; } = "";
         public string PilotCallsign { get; set; } = "F-GABC";
         public string PlayerDisplayName { get; set; } = "Pilot";
         public string AircraftType { get; set; } = "DR400";
