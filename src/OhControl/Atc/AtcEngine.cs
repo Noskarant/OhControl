@@ -36,6 +36,7 @@ namespace OhControl.Atc
             public int? Qnh { get; set; }
             public double? FrequencyMhz { get; set; }
             public RadioStationKind? SourceStationKind { get; set; }
+            public bool ReminderIssued { get; set; }
         }
 
         private readonly AtisService _atisService;
@@ -47,6 +48,13 @@ namespace OhControl.Atc
         private readonly Dictionary<string, PendingReadback> _pendingReadbacks =
             new Dictionary<string, PendingReadback>(
                 StringComparer.OrdinalIgnoreCase);
+
+        // A completed handoff stays closed until the pilot changes to the
+        // other station or explicitly starts a new operational request.
+        private readonly Dictionary<string, RadioStationKind>
+            _completedFrequencyHandoffs =
+                new Dictionary<string, RadioStationKind>(
+                    StringComparer.OrdinalIgnoreCase);
 
         private readonly Dictionary<string, string> _lastAtcTransmissions =
             new Dictionary<string, string>(
@@ -91,6 +99,26 @@ namespace OhControl.Atc
 
             string normalized = Normalize(transcript);
             string spokenCallsign = AviationCallsign.ToSpeech(callsign);
+            string handoffKey = NormalizeCallsignKey(callsign);
+
+            if (_completedFrequencyHandoffs.TryGetValue(
+                handoffKey, out RadioStationKind previousStation))
+            {
+                if (previousStation != station.Kind ||
+                    IsNewOperationalRequestAfterHandoff(
+                        normalized, station.Kind))
+                {
+                    _completedFrequencyHandoffs.Remove(handoffKey);
+                }
+                else if (!IsRepeatRequest(normalized))
+                {
+                    return new AtcResponse
+                    {
+                        Feedback = "Changement de fréquence déjà confirmé. " +
+                            "Passez sur la fréquence du nouveau contrôleur."
+                    };
+                }
+            }
             AtisBroadcast atis = _atisService.Build(telemetry);
 
             AtcResponse repeat =
@@ -1028,54 +1056,54 @@ namespace OhControl.Atc
             {
                 bool frequencyOk =
                     pending.FrequencyMhz.HasValue &&
-                    ContainsFrequency(
-                        text,
-                        pending.FrequencyMhz.Value);
+                    ContainsFrequency(text, pending.FrequencyMhz.Value);
 
                 if (frequencyOk)
                 {
-                    _pendingReadbacks.Remove(
-                        pendingKey);
+                    _pendingReadbacks.Remove(pendingKey);
+                    _completedFrequencyHandoffs[pendingKey] =
+                        pending.SourceStationKind ?? station.Kind;
 
+                    string feedback =
+                        "Fréquence correctement collationnée : " +
+                        pending.FrequencyMhz.Value.ToString(
+                            "000.000", CultureInfo.InvariantCulture) +
+                        " MHz. Contactez le nouveau contrôleur.";
+
+                    // The original instruction already ended with goodbye.
+                    // Do not repeat the whole frequency handoff.
                     if (IsGoodbye(text))
                     {
-                        return Speak(
-                            spokenCallsign +
-                            ", au revoir.",
-                            "Fréquence correctement collationnée et fin d'échange reconnue.");
+                        return Speak(spokenCallsign + ", au revoir.", feedback);
                     }
 
-                    return new AtcResponse
-                    {
-                        Feedback =
-                            "Fréquence correctement collationnée : " +
-                            pending.FrequencyMhz.Value
-                                .ToString(
-                                    "000.000",
-                                    CultureInfo.InvariantCulture) +
-                            " MHz."
-                    };
+                    return new AtcResponse { Feedback = feedback };
                 }
 
-                if (IsAcknowledgementOnly(text) ||
-                    LooksLikeFrequencyReadback(text))
+                // Stay in this specific dialogue state. A transcription
+                // like "cent dix-huit virgule un" or "passe sur la tour"
+                // must NEVER fall through to generic "transmettez".
+                if (!pending.ReminderIssued &&
+                    (IsAcknowledgementOnly(text) ||
+                     LooksLikeFrequencyReadback(text) ||
+                     IsGoodbye(text) ||
+                     LooksLikeTransferAcknowledgement(text)))
                 {
-                    string stationName =
-                        StationNameForFrequency(
-                            pending.FrequencyMhz);
-
+                    pending.ReminderIssued = true;
                     return Speak(
                         spokenCallsign +
-                        ", collationnez, contactez " +
-                        stationName +
-                        " " +
+                        ", collationnez la fréquence " +
                         AviationFrenchNumbers.Frequency(
                             pending.FrequencyMhz ?? 0) +
-                        ", au revoir.",
-                        "Le changement de fréquence doit être collationné.");
+                        ".",
+                        "Collationnement de changement de fréquence incomplet.");
                 }
 
-                return null;
+                return new AtcResponse
+                {
+                    Feedback = "Transfert de fréquence en attente : " +
+                        "collationnez la fréquence annoncée, puis changez de station."
+                };
             }
 
             if (pending.Kind == "taxi")
@@ -1425,73 +1453,116 @@ namespace OhControl.Atc
                    !operationalContent;
         }
 
+        private static bool IsNewOperationalRequestAfterHandoff(
+            string text,
+            RadioStationKind station)
+        {
+            return station == RadioStationKind.Ground &&
+                   (IsGroundDepartureRequest(text) ||
+                    ContainsAny(text, "piste degagee", "retour parking"));
+        }
+
+        private static bool LooksLikeTransferAcknowledgement(string text)
+        {
+            return ContainsAny(text,
+                "tour",
+                "sol",
+                "contact",
+                "je passe",
+                "on passe",
+                "nous passons",
+                "je bascule",
+                "on bascule",
+                "bien recu",
+                "recu",
+                "merci",
+                "au revoir");
+        }
+
         private static bool LooksLikeFrequencyReadback(
             string text)
         {
-            return ContainsAny(
-                       text,
+            return ContainsAny(text,
                        "frequence",
                        "decimale",
+                       "virgule",
                        "contacte",
-                       "contactons") ||
-                   (text ?? "").Any(
-                       char.IsDigit);
+                       "contactons",
+                       "cent dix huit",
+                       "cent vingt et un",
+                       "unite unite huit") ||
+                   (text ?? "").Any(char.IsDigit);
         }
 
         private static bool ContainsFrequency(
             string text,
             double frequencyMhz)
         {
-            string normalized =
-                Normalize(text);
+            string normalized = Normalize(text);
+            string compact = normalized.Replace(" ", "");
 
-            string compact =
-                normalized.Replace(
-                    " ",
-                    "");
-
-            string formatted =
-                frequencyMhz.ToString(
-                    "000.000",
-                    CultureInfo.InvariantCulture);
-
-            string sixDigits =
-                formatted.Replace(
-                    ".",
-                    "");
-
-            string[] parts =
-                formatted.Split('.');
-
+            string formatted = frequencyMhz.ToString(
+                "000.000", CultureInfo.InvariantCulture);
+            string[] parts = formatted.Split('.');
+            string rawDigits = parts[0] + parts[1];
             string shortDigits =
-                parts[1].EndsWith(
-                    "00",
-                    StringComparison.Ordinal)
-                    ? parts[0] +
-                      parts[1].Substring(0, 1)
-                    : sixDigits;
+                parts[1].EndsWith("00", StringComparison.Ordinal)
+                    ? parts[0] + parts[1].Substring(0, 1)
+                    : rawDigits;
 
-            string officialSpeech =
-                Normalize(
-                    AviationFrenchNumbers.Frequency(
-                        frequencyMhz))
-                    .Replace(
-                        " ",
-                        "");
+            string officialSpeech = Normalize(
+                AviationFrenchNumbers.Frequency(frequencyMhz));
+            string spokenUnits = officialSpeech.Replace("unite", "un");
 
-            string legacySpeech =
-                officialSpeech.Replace(
-                    "unite",
-                    "un");
+            // Numeric speech-to-text, e.g. "118.100", "118,1",
+            // "118 100", "118 1".
+            if (Regex.IsMatch(normalized,
+                @"(?<!\d)" + parts[0] +
+                @"\s+(?:" + parts[1] +
+                (shortDigits != rawDigits
+                    ? "|" + parts[1].Substring(0, 1)
+                    : "") +
+                @")(?!\d)", RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(normalized,
+                    @"(?<!\d)(?:" + rawDigits + "|" +
+                    shortDigits + @")(?!\d)",
+                    RegexOptions.CultureInvariant))
+            {
+                return true;
+            }
 
-            return compact.Contains(
-                       sixDigits) ||
-                   compact.Contains(
-                       shortDigits) ||
-                   compact.Contains(
-                       officialSpeech) ||
-                   compact.Contains(
-                       legacySpeech);
+            if (compact.Contains(officialSpeech.Replace(" ", "")) ||
+                compact.Contains(spokenUnits.Replace(" ", "")))
+            {
+                return true;
+            }
+
+            // ASR usually renders digits as common French speech rather
+            // than ICAO "unité" : "un un huit décimale un",
+            // "cent dix-huit virgule un", etc.
+            if (Math.Abs(frequencyMhz - 118.100) < 0.0005)
+            {
+                return Regex.IsMatch(
+                    normalized,
+                    @"\b(?:un(?:ite)?\s+un(?:ite)?\s+huit|" +
+                    @"cent\s+dix\s+huit|un\s+dix\s+huit)" +
+                    @"\s+(?:decimale\s+|virgule\s+|point\s+)?" +
+                    @"(?:un|unite)\b",
+                    RegexOptions.CultureInvariant);
+            }
+
+            if (Math.Abs(frequencyMhz - 121.705) < 0.0005)
+            {
+                return Regex.IsMatch(
+                    normalized,
+                    @"\b(?:un(?:ite)?\s+deux\s+un(?:ite)?|" +
+                    @"cent\s+vingt(?:\s+et)?\s+un)" +
+                    @"\s+(?:decimale\s+|virgule\s+|point\s+)?" +
+                    @"sept\s+zero\s+cinq\b",
+                    RegexOptions.CultureInvariant);
+            }
+
+            return false;
         }
 
         private static bool ContainsQnh(

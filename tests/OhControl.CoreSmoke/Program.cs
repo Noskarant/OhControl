@@ -18,6 +18,7 @@ internal static class Program
             VerifyFrequencySpeech();
             VerifyReportingPoints();
             VerifyAtcFlow();
+            VerifyFrequencyTransferReadbackLifecycle();
             VerifyGroundHandoffOnlyAtHoldingPoint();
             VerifyFutureReadyCallDoesNotHandoff();
             VerifyVhfNoiseProfile();
@@ -440,6 +441,104 @@ internal static class Program
             "F-GABC", location);
         Expect(!((noClearance.Text ?? "").Contains("Bron Tour")),
             "A station contact without taxi clearance should not transfer.");
+    }
+
+    private static void VerifyFrequencyTransferReadbackLifecycle()
+    {
+        var ground = new RadioStation(
+            RadioStationKind.Ground, "Bron Sol", 121.705);
+        var tower = new RadioStation(
+            RadioStationKind.Tower, "Bron Tour", 118.100);
+        var telemetry = new TelemetrySnapshot
+        {
+            IsOnGround = true,
+            WindDirectionTrueDeg = 160,
+            WindSpeedKt = 5,
+            SeaLevelPressureMb = 1018
+        };
+
+        var accepted = new[]
+        {
+            "118.100 F-GABC",
+            "118,1 F-GABC au revoir",
+            "118 100 F-GABC",
+            "118 1 F-GABC",
+            "unité unité huit décimale unité F-GABC",
+            "un un huit décimale un F-GABC",
+            "cent dix-huit virgule un F-GABC",
+            "cent dix huit un F-GABC",
+            "On passe sur Bron Tour cent dix-huit décimale un, F-GABC"
+        };
+
+        foreach (string readback in accepted)
+        {
+            var engine = CreateGroundTransfer(ground, telemetry);
+            var response = engine.Handle(
+                ground, readback, "F-GABC", telemetry);
+
+            Expect((response.Text ?? "").IndexOf(
+                       "transmettez", StringComparison.OrdinalIgnoreCase) < 0 &&
+                   (response.Text ?? "").IndexOf(
+                       "collationnez", StringComparison.OrdinalIgnoreCase) < 0,
+                "Correct frequency readback must not be repeated: " + readback);
+
+            var redundant = engine.Handle(
+                ground, "F-GABC bien reçu", "F-GABC", telemetry);
+
+            Expect(string.IsNullOrWhiteSpace(redundant.Text),
+                "A closed Ground exchange must not restart: " + readback);
+
+            var firstTowerCall = engine.Handle(
+                tower, "Bron Tour F-GABC bonjour", "F-GABC", telemetry);
+            ExpectContains(firstTowerCall.Text, "Bron Tour",
+                "Tower must accept a new contact after the frequency change.");
+        }
+
+        var wrongEngine = CreateGroundTransfer(ground, telemetry);
+        var wrong = wrongEngine.Handle(
+            ground, "121.705 F-GABC", "F-GABC", telemetry);
+        ExpectContains(wrong.Text, "collationnez",
+            "An incorrect frequency must not complete the transfer.");
+
+        var oneReminder = wrongEngine.Handle(
+            ground, "Je passe sur la tour F-GABC", "F-GABC", telemetry);
+        Expect(string.IsNullOrWhiteSpace(oneReminder.Text),
+            "A second ambiguous readback must not repeat the correction.");
+
+        var recovery = wrongEngine.Handle(
+            ground, "cent dix huit décimale un F-GABC au revoir",
+            "F-GABC", telemetry);
+        ExpectContains(recovery.Text, "au revoir",
+            "After clarification a valid readback must be accepted.");
+
+        var truncated = CreateGroundTransfer(ground, telemetry);
+        var unknown = truncated.Handle(
+            ground, "F-GABC", "F-GABC", telemetry);
+        Expect(string.IsNullOrWhiteSpace(unknown.Text),
+            "Unrecognized handoff acknowledgement must not become a new call.");
+
+        var retry = truncated.Handle(
+            ground, "F-GABC 118.1", "F-GABC", telemetry);
+        Expect(string.IsNullOrWhiteSpace(retry.Text),
+            "A valid numeric readback after an ambiguous message must close.");
+    }
+
+    private static AtcEngine CreateGroundTransfer(
+        RadioStation ground, TelemetrySnapshot telemetry)
+    {
+        var engine = new AtcEngine(new AtisService());
+        engine.Handle(ground,
+            "Bron Sol F-GABC demande roulage pour tours de piste",
+            "F-GABC", telemetry);
+        engine.Handle(ground,
+            "F-GABC je roule point d'attente A1 piste 16 QNH 1018",
+            "F-GABC", telemetry);
+        var handoff = engine.Handle(ground,
+            "F-GABC je suis au point d'attente A1 prêt au départ",
+            "F-GABC", telemetry);
+        ExpectContains(handoff.Text, "Bron Tour",
+            "Ground handoff must be issued before testing its readback.");
+        return engine;
     }
 
     private static void VerifyAtcFlow()
