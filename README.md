@@ -87,37 +87,39 @@ The wording follows the current DGAC/DSNA phraseology manual where implemented. 
 - ATIS loops automatically while tuned to 128.130
 - ATIS audio is cached rather than regenerated every loop
 
-### Multiplayer for two PCs
+### Direct multiplayer for two PCs (no Supabase)
 
-Multiplayer uses **Supabase Realtime Broadcast** directly over WebSocket.
+OhControl now offers a private two-aircraft direct TCP session.
+One PC is the **ATC host** and keeps the authoritative state of both pilots:
+each aircraft's callsign, clearances, radio readbacks and traffic.
+The **guest** sends pilot transmissions/position updates to the host and never
+generates its own independent ATC clearances. Host-generated Eleven v4 audio
+is transmitted to the guest as one shared radio transmission; both aircraft
+on the same frequency hear exactly the same ATC audio.
 
-No database table is required.
+1. On both PCs, configure different callsigns and the same room code and TCP
+   port (default 47650) in **Settings > Session à deux**.
+2. On the host, enable multiplayer and check **Ce PC est l’hôte ATC**.
+3. On the guest, enable multiplayer, uncheck the host box, and enter the
+   host's IPv4 LAN address or private VPN/Tailscale address.
+4. Make sure the host's Windows Firewall allows OhControl incoming TCP on
+   the chosen port for the trusted private network.
+5. Start OhControl on the host first, then on the guest. Both PCs must also
+   use MSFS multiplayer if they want to see one another's aircraft.
 
-Each client publishes about five telemetry updates per second:
+The protocol is **not encrypted**: use only your trusted LAN or a private
+encrypted VPN (e.g., Tailscale). Do not expose port 47650 to the open internet.
+The shared room code prevents accidental joining; it is not strong network
+authentication. The host's computer must remain online for the entire session.
 
-- callsign and aircraft type
-- position / altitude / heading / speeds
-- COM1 state
-- active runway
-- estimated LFLY circuit phase
-- runway-threshold distance
-- PTT state
+Telemetry is published approximately five times per second:
+GPS, speed, altitude, phase, runway, heading, COM1 and active PTT.
+Other aircraft count as traffic even when they are on a different frequency.
+Two-pilot live speech uses 8 kHz mu-law, not ElevenLabs credits; STT remains
+ElevenLabs on each transmitting PC and ATC TTS runs on the host only.
 
-OhControl tracks remote players and removes stale aircraft automatically.
-
-If both pilots use the same room code:
-
-- both aircraft are visible to the ATC engine
-- ATC can sequence one aircraft behind the other
-- a departure can be held when the other aircraft is detected in final/runway state
-- both clients know when the frequency is occupied
-- simultaneous PTT on the same frequency is treated as a double transmission and is not understood by ATC
-- live pilot microphone audio is compressed to 8 kHz G.711 mu-law and streamed to the other PC while transmitting
-- pilot transcripts are also shared for visibility/debugging
-- ATC responses are shared and played on both clients when they are monitoring that frequency
-- ATIS information letters are derived from the same UTC half-hour slot so both clients stay synchronized
-
-Pilot-to-pilot radio audio does not use ElevenLabs. It is transmitted as small low-bandwidth mu-law chunks over Realtime Broadcast, so only ATC speech/transcription consumes ElevenLabs credit.
+An optional legacy Supabase transport remains in the codebase but is **not**
+used for the direct session. Existing locally saved settings are retained.
 
 ### LFLY circuit awareness
 
@@ -248,6 +250,17 @@ If `MSFS2024_SDK` is not defined, it falls back to:
 
 ## Current limitations
 
-The ATC engine is deterministic and currently targets common VFR training flows. It does not yet implement the complete French ATC rule set, detailed LFLY taxi routing, every reporting point, conflict prediction, wake-turbulence separation, transponder assignment, or every advanced radio-propagation effect. Live pilot-to-pilot voice audio is already implemented for the shared session.
+The ATC engine is deterministic, host-authoritative in direct multiplayer and currently targets common VFR training flows. It does not yet implement the complete French ATC rule set, detailed LFLY taxi routing, every reporting point, conflict prediction, wake-turbulence separation, transponder assignment, or every advanced radio-propagation effect. Live pilot-to-pilot voice audio is already implemented for the shared session.
 
 The LFLY phase detector and ATC sequencing must be validated in live MSFS flights before relying on them for PPL training.
+
+
+### Tower line-up and takeoff safety
+
+A valid readback such as “Fox Bravo Charlie, on s'aligne et on attend” leaves
+ATC in line-up-and-wait. The automatic clearance is sent only after GPS/SimConnect
+telemetry confirms the aircraft on the active runway centreline, aligned with
+the active runway direction and at low ground speed for five continuous seconds.
+Another known aircraft in final/occupying the runway prevents release.
+If no SimConnect position is available, **no automatic takeoff clearance** is
+issued. This is a flight-simulator training tool, not a real ATC service.
