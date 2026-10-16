@@ -665,7 +665,7 @@ internal static class Program
         var ambiguous = new AtcEngine(atis);
         ambiguous.UpdateTraffic(new[]
         {
-            new MultiplayerPlayerState { Callsign = "F-DABC" }
+            new OhControl.Multiplayer.MultiplayerPlayerState { Callsign = "F-DABC" }
         });
         ambiguous.Handle(ground,
             "Bron Sol F-GABC demande roulage", "F-GABC", telemetry);
