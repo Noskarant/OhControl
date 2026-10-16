@@ -1,0 +1,52 @@
+name: Core smoke test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - bootstrap-lfly
+      - main
+
+jobs:
+  core-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Run ATC core smoke tests
+        run: dotnet run --project tests/OhControl.CoreSmoke/OhControl.CoreSmoke.csproj --configuration Release
+
+  ui-compile:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Compile WinForms UI with isolated runtime stubs
+        run: dotnet build tests/OhControl.UiSmoke/OhControl.UiSmoke.csproj --configuration Release
+
+      - name: Validate one-click launcher syntax
+        shell: powershell
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/Start-OhControl.ps1"),
+            [ref]$null,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            exit 1
+          }
+
+      - name: Compile almost-complete app
+        run: dotnet build tests/OhControl.FullSmoke/OhControl.FullSmoke.csproj --configuration Release

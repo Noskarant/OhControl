@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../src/OhControl/MainForm.cs" Link="MainForm.cs" />
+    <Compile Include="../../src/OhControl/SettingsForm.cs" Link="SettingsForm.cs" />
+    <Compile Include="../../src/OhControl/FirstRunWizardForm.cs" Link="FirstRunWizardForm.cs" />
+    <Compile Include="../../src/OhControl/Setup/PrerequisiteChecker.cs" Link="Setup/PrerequisiteChecker.cs" />
+    <Compile Include="../../src/OhControl/Ui/OhControlTheme.cs" Link="Ui/OhControlTheme.cs" />
+  </ItemGroup>
+</Project>
