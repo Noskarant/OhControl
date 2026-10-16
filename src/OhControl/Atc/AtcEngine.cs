@@ -121,6 +121,17 @@ namespace OhControl.Atc
             }
             AtisBroadcast atis = _atisService.Build(telemetry);
 
+            AtcResponse atisCorrection = CheckAtisInformation(
+                normalized, spokenCallsign, atis);
+            if (atisCorrection != null)
+            {
+                RememberAtcTransmission(callsign, station, atisCorrection);
+                return atisCorrection;
+            }
+
+            spokenCallsign = SelectReplyCallsign(
+                callsign, normalized, spokenCallsign);
+
             AtcResponse repeat =
                 TryHandleRepeatRequest(
                     callsign,
@@ -183,6 +194,86 @@ namespace OhControl.Atc
                 response);
 
             return response;
+        }
+
+        private static readonly HashSet<string> InformationCodes =
+            new HashSet<string>(new[]
+            {
+                "alpha", "bravo", "charlie", "delta", "echo", "foxtrot",
+                "golf", "hotel", "india", "juliett", "juliet", "kilo",
+                "lima", "mike", "november", "oscar", "papa", "quebec",
+                "romeo", "sierra", "tango", "uniform", "victor",
+                "whiskey", "xray", "x ray", "yankee", "zulu"
+            }, StringComparer.OrdinalIgnoreCase);
+
+        private static AtcResponse CheckAtisInformation(
+            string text, string spokenCallsign, AtisBroadcast currentAtis)
+        {
+            if (string.IsNullOrWhiteSpace(text) || currentAtis == null)
+                return null;
+
+            Match match = Regex.Match(text,
+                @"\binformation\s+(?<letter>x\s+ray|[a-z]+)\b",
+                RegexOptions.CultureInvariant);
+            if (!match.Success) return null;
+            string reported = match.Groups["letter"].Value.Trim();
+            if (!InformationCodes.Contains(reported)) return null;
+
+            string actual = Normalize(currentAtis.Information);
+            if (reported.Replace(" ", "") == actual.Replace(" ", "") ||
+                (reported == "juliet" && actual == "juliett"))
+                return null;
+
+            return Speak(
+                spokenCallsign + ", négatif, information " +
+                currentAtis.Information + " en vigueur. Confirmez information " +
+                currentAtis.Information + " avant de poursuivre.",
+                "Information ATIS incorrecte : " + reported +
+                " ; information en vigueur : " + currentAtis.Information + ".");
+        }
+
+        private string SelectReplyCallsign(
+            string callsign, string pilotText, string fullSpeech)
+        {
+            string raw = new string((callsign ?? "").ToUpperInvariant()
+                .Where(char.IsLetterOrDigit).ToArray());
+
+            if (raw.Length < 4 ||
+                (GetState(callsign) == TrainingState.Parked &&
+                 !_pendingReadbacks.ContainsKey(NormalizeCallsignKey(callsign))))
+                return fullSpeech;
+
+            string shortCode = raw.Substring(0, 1) +
+                raw.Substring(raw.Length - 2);
+            if (_traffic.Any(traffic =>
+            {
+                string other = new string((traffic?.Callsign ?? "")
+                    .ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
+                return other.Length >= 4 &&
+                    !string.Equals(other, raw, StringComparison.Ordinal) &&
+                    other[0] == raw[0] &&
+                    other.Substring(other.Length - 2) ==
+                        raw.Substring(raw.Length - 2);
+            }))
+                return fullSpeech;
+
+            string shortSpeech = AviationCallsign.ToSpeech(shortCode);
+            string spokenPattern = @"(?<![a-z])" +
+                Regex.Escape(Normalize(shortSpeech)).Replace(@"\ ", @"\s+") +
+                @"(?![a-z])";
+            string writtenShort = raw.Substring(0, 1).ToLowerInvariant() +
+                raw.Substring(raw.Length - 2).ToLowerInvariant();
+
+            if (Regex.IsMatch(pilotText, spokenPattern) ||
+                Regex.IsMatch(pilotText,
+                    @"\b" + Regex.Escape(writtenShort) + @"\b") ||
+                Regex.IsMatch(pilotText,
+                    @"\b" + raw.Substring(0, 1).ToLowerInvariant() +
+                    @"\s+" + raw.Substring(raw.Length - 2).ToLowerInvariant() +
+                    @"\b"))
+                return shortSpeech;
+
+            return fullSpeech;
         }
 
         private AtcResponse TryHandleRepeatRequest(
@@ -1126,11 +1217,35 @@ namespace OhControl.Atc
 
                 bool taxiActionOk =
                     ContainsAny(
-                        text,
-                        "roule",
-                        "roulons",
-                        "point d attente",
-                        "point attente");
+                        text, "roule", "roulons",
+                        "point d attente", "point d arret", "point attente");
+
+                string reportedPoint = FindMentionedHoldingPoint(text);
+                if (reportedPoint != null &&
+                    reportedPoint != pending.HoldingPoint)
+                    return Speak(spokenCallsign +
+                        ", négatif, point d'attente " +
+                        AviationFrenchNumbers.Identifier(pending.HoldingPoint) +
+                        ". Collationnez le point d'attente correct.",
+                        "Point d'attente incorrect : " + reportedPoint +
+                        ". Attendu : " + pending.HoldingPoint + ".");
+
+                string reportedRunway = FindMentionedRunway(text);
+                if (reportedRunway != null && reportedRunway != pending.Runway)
+                    return Speak(spokenCallsign + ", négatif, piste " +
+                        AviationFrenchNumbers.Runway(pending.Runway) +
+                        ". Collationnez la piste correcte.",
+                        "Piste incorrecte : " + reportedRunway +
+                        ". Attendue : " + pending.Runway + ".");
+
+                int? reportedQnh = FindMentionedQnh(text);
+                if (pending.Qnh.HasValue && reportedQnh.HasValue &&
+                    reportedQnh.Value != pending.Qnh.Value)
+                    return Speak(spokenCallsign + ", négatif, Q N H " +
+                        AviationFrenchNumbers.DigitsOnly(pending.Qnh.Value) +
+                        ". Collationnez le Q N H correct.",
+                        "QNH incorrect : " + reportedQnh.Value +
+                        ". Attendu : " + pending.Qnh.Value + ".");
 
                 if (holdingPointOk &&
                     runwayOk &&
@@ -1175,6 +1290,23 @@ namespace OhControl.Atc
                 }
 
                 return null;
+            }
+
+            // Mandatory runway clearances must reject a wrong runway,
+            // rather than falling back to an unspecific repeat request.
+            if (pending.Kind == "lineup_wait" ||
+                pending.Kind == "takeoff" ||
+                pending.Kind == "land" ||
+                pending.Kind == "touch")
+            {
+                string reportedRunway = FindMentionedRunway(text);
+                if (reportedRunway != null && pending.Runway != null &&
+                    reportedRunway != pending.Runway)
+                    return Speak(spokenCallsign + ", négatif, piste " +
+                        AviationFrenchNumbers.Runway(pending.Runway) +
+                        ". Collationnez la piste correcte.",
+                        "Piste incorrecte : " + reportedRunway +
+                        ". Attendue : " + pending.Runway + ".");
             }
 
             if (pending.Kind == "lineup_wait")
@@ -1909,6 +2041,61 @@ namespace OhControl.Atc
                 callsign)
                 ? "UNKNOWN"
                 : callsign.Trim();
+        }
+
+        private static string FindMentionedHoldingPoint(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            Match match = Regex.Match(text,
+                @"\b(?:point\s+d\s+(?:attente|arret)\s+)?(?:a|alpha)\s*" +
+                @"(?<number>[1-4]|un|une|deux|trois|quatre)\b",
+                RegexOptions.CultureInvariant);
+            if (!match.Success) return null;
+            switch (match.Groups["number"].Value)
+            {
+                case "1": case "un": case "une": return "A1";
+                case "2": case "deux": return "A2";
+                case "3": case "trois": return "A3";
+                case "4": case "quatre": return "A4";
+                default: return null;
+            }
+        }
+
+        private static string FindMentionedRunway(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            Match match = Regex.Match(text,
+                @"\bpiste\s+(?<runway>1\s*6|3\s*4|un\s+six|trois\s+quatre|seize|trente\s+quatre)\b",
+                RegexOptions.CultureInvariant);
+            if (!match.Success) return null;
+            string value = match.Groups["runway"].Value.Replace(" ", "");
+            return value == "16" || value == "unsix" || value == "seize"
+                ? "16" : "34";
+        }
+
+        private static int? FindMentionedQnh(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            Match match = Regex.Match(text,
+                @"\bq\s*n\s*h\s+(?<value>\d{3,4})\b",
+                RegexOptions.CultureInvariant);
+            if (match.Success &&
+                int.TryParse(match.Groups["value"].Value, out int qnh))
+                return qnh;
+
+            Match start = Regex.Match(text, @"\bq\s*n\s*h\s+");
+            if (!start.Success) return null;
+            string rest = text.Substring(start.Index + start.Length);
+            for (int pressure = 950; pressure <= 1060; pressure++)
+            {
+                string spoken = Normalize(
+                    AviationFrenchNumbers.DigitsOnly(pressure));
+                if (Regex.IsMatch(rest,
+                    @"^" + Regex.Escape(spoken).Replace(@"\ ", @"\s+") +
+                    @"\b", RegexOptions.CultureInvariant))
+                    return pressure;
+            }
+            return null;
         }
 
         private static bool ContainsPoint(
