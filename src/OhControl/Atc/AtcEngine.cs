@@ -318,11 +318,74 @@ namespace OhControl.Atc
                     "depart",
                     "départ",
                     "point d attente",
+                    "point d arret",
                     "point attente",
                     "attente");
 
             return ready &&
                    departureContext;
+        }
+
+        // A taxi clearance readback is NOT a report of reaching the hold.
+        // Require a prior taxi clearance, an affirmative arrival/ready report
+        // and no language indicating that the aircraft is still at parking
+        // or travelling towards the holding point.
+        private bool IsGroundHoldingPointReport(
+            string text,
+            string callsign)
+        {
+            TrainingState state = GetState(callsign);
+            if (state != TrainingState.Taxiing &&
+                state != TrainingState.HoldingPoint)
+                return false;
+
+            if (string.IsNullOrWhiteSpace(text) ||
+                ContainsAny(text,
+                    "parking",
+                    "pas bouge",
+                    "pas encore",
+                    "encore au",
+                    "je roule",
+                    "on roule",
+                    "nous roulons",
+                    "roulons",
+                    "roulage",
+                    "je rejoins",
+                    "on rejoint",
+                    "nous rejoignons",
+                    "rejoindre",
+                    "en route vers",
+                    "rappellerai",
+                    "rappelerai",
+                    "rappelerons",
+                    "rappelez",
+                    "rappeler",
+                    "je vais",
+                    "on va",
+                    "quand je",
+                    "quand nous",
+                    "une fois au",
+                    "avant de",
+                    "je ne suis pas"))
+                return false;
+
+            bool explicitlyAtHoldingPoint =
+                ContainsAny(text,
+                    "au point d attente",
+                    "au point d arret",
+                    "arrive au point",
+                    "arrives au point",
+                    "sommes au point",
+                    "on est au point",
+                    "je suis au point");
+
+            // Standard terse VFR reports include "point d'attente A1 prêt".
+            // They are accepted only when a readiness statement is present.
+            bool terseReadyHoldingPoint =
+                IsReadyForDeparture(text) &&
+                ContainsAny(text, "point d attente", "point d arret");
+
+            return explicitlyAtHoldingPoint || terseReadyHoldingPoint;
         }
 
         private AtcResponse HandleGround(
@@ -331,6 +394,18 @@ namespace OhControl.Atc
             string spokenCallsign,
             AtisBroadcast atis)
         {
+            if (IsGroundHoldingPointReport(text, callsignKey))
+            {
+                SetState(callsignKey, TrainingState.HoldingPoint);
+                return BuildFrequencyHandoff(
+                    callsignKey,
+                    spokenCallsign,
+                    "Bron Tour",
+                    118.100,
+                    RadioStationKind.Ground,
+                    "Arrivée au point d'attente confirmée ; transfert vers Bron Tour.");
+            }
+
             if (IsGroundDepartureRequest(text))
             {
                 return BuildTaxiClearance(
@@ -346,20 +421,6 @@ namespace OhControl.Atc
                     "Premier contact reconnu.");
             }
 
-            if (IsReadyForDeparture(text))
-            {
-                SetState(
-                    callsignKey,
-                    TrainingState.HoldingPoint);
-
-                return BuildFrequencyHandoff(
-                    callsignKey,
-                    spokenCallsign,
-                    "Bron Tour",
-                    118.100,
-                    RadioStationKind.Ground,
-                    "Prêt au départ reconnu ; transfert vers Bron Tour.");
-            }
 
             if (ContainsAny(
                 text,
@@ -1051,7 +1112,7 @@ namespace OhControl.Atc
                     if (station != null &&
                         station.Kind ==
                         RadioStationKind.Ground &&
-                        IsReadyForDeparture(text))
+                        IsGroundHoldingPointReport(text, callsignKey))
                     {
                         SetState(
                             callsignKey,

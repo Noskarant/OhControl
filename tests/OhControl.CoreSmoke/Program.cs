@@ -18,6 +18,7 @@ internal static class Program
             VerifyFrequencySpeech();
             VerifyReportingPoints();
             VerifyAtcFlow();
+            VerifyGroundHandoffOnlyAtHoldingPoint();
 
             Console.WriteLine("OhControl core smoke tests passed.");
             return 0;
@@ -286,6 +287,83 @@ internal static class Program
         Expect(
             nearest != null && nearest.Point.Code == "NW",
             "NW coordinate lookup failed.");
+    }
+
+    private static void VerifyGroundHandoffOnlyAtHoldingPoint()
+    {
+        var ground = new RadioStation(
+            RadioStationKind.Ground, "BRON Sol", 121.705);
+        var atis = new AtisService();
+        var location = new TelemetrySnapshot
+        {
+            IsOnGround = true,
+            GroundSpeedKt = 0,
+            WindDirectionTrueDeg = 160,
+            WindSpeedKt = 5,
+            SeaLevelPressureMb = 1018
+        };
+        var engine = new AtcEngine(atis);
+
+        var premature = engine.Handle(
+            ground, "F-GABC je suis prêt au départ, au parking",
+            "F-GABC", location);
+        Expect(!((premature.Text ?? "").Contains("Bron Tour")),
+            "Before taxi clearance ATC must not transfer to Tower.");
+
+        engine.Handle(ground,
+            "Bron Sol F-GABC demande roulage pour tours de piste",
+            "F-GABC", location);
+
+        var taxiReadback = engine.Handle(
+            ground,
+            "F-GABC je roule point d'attente A1 piste 16 QNH 1018, " +
+            "je rappellerai prêt au départ au point d'attente",
+            "F-GABC", location);
+        Expect(string.IsNullOrWhiteSpace(taxiReadback.Text) ||
+               !taxiReadback.Text.Contains("Bron Tour"),
+            "Reading back 'rappellerai prêt' must not trigger a Tower handoff.");
+
+        var parking = engine.Handle(
+            ground, "F-GABC toujours au parking, prêt au départ, je n'ai pas bougé",
+            "F-GABC", location);
+        Expect(!((parking.Text ?? "").Contains("Bron Tour")),
+            "Pilot still at parking must never be transferred.");
+
+        var taxiing = engine.Handle(
+            ground, "F-GABC je roule vers le point d'attente A1 prêt au départ",
+            "F-GABC", location);
+        Expect(!((taxiing.Text ?? "").Contains("Bron Tour")),
+            "Taxiing towards the hold must not trigger transfer.");
+
+        var destination = engine.Handle(
+            ground, "F-GABC je suis au point d'arrêt A1",
+            "F-GABC", location);
+        ExpectContains(destination.Text, "Bron Tour",
+            "Only explicit arrival at the holding point triggers Tower.");
+        ExpectContains(destination.Text, "au revoir",
+            "Tower handoff must include goodbye.");
+
+        var separate = new AtcEngine(atis);
+        separate.Handle(ground,
+            "Bron Sol F-GABC demande roulage pour tours de piste",
+            "F-GABC", location);
+        var properReadback = separate.Handle(
+            ground, "F-GABC je roule point d'attente A1 piste 16 QNH 1018",
+            "F-GABC", location);
+        Expect(string.IsNullOrWhiteSpace(properReadback.Text),
+            "Ordinary taxi readback must remain silent.");
+        var departure = separate.Handle(
+            ground, "F-GABC point d'attente A1 prêt au départ",
+            "F-GABC", location);
+        ExpectContains(departure.Text, "Bron Tour",
+            "Normal short ready-at-hold report must trigger handoff.");
+
+        var wrongContext = new AtcEngine(atis);
+        var noClearance = wrongContext.Handle(
+            ground, "F-GABC point d'attente A1 prêt",
+            "F-GABC", location);
+        Expect(!((noClearance.Text ?? "").Contains("Bron Tour")),
+            "A station contact without taxi clearance should not transfer.");
     }
 
     private static void VerifyAtcFlow()
