@@ -18,6 +18,7 @@ internal static class Program
             VerifyFrequencySpeech();
             VerifyReportingPoints();
             VerifyAtcFlow();
+            VerifyLineupReadbackVariationsAndPhysicalAlignment();
             VerifyFrequencyTransferReadbackLifecycle();
             VerifyAtisCorrectionAndReadbackErrors();
             VerifyShortCallsignReadbacks();
@@ -676,6 +677,56 @@ internal static class Program
             "Do not shorten ATC callsigns when another pilot has the same suffix.");
     }
 
+    private static void VerifyLineupReadbackVariationsAndPhysicalAlignment()
+    {
+        var ground = new RadioStation(RadioStationKind.Ground, "Bron Sol", 121.705);
+        var tower = new RadioStation(RadioStationKind.Tower, "Bron Tour", 118.100);
+        var telemetry = new TelemetrySnapshot {
+            IsOnGround = true, WindDirectionTrueDeg = 160,
+            WindSpeedKt = 4, SeaLevelPressureMb = 1018
+        };
+        string[] samples = {
+            "Fox Bravo Charlie on s'aligne et on attend",
+            "F-GABC on s aligne et on attend",
+            "Fox Bravo Charlie nous nous alignons et attendons",
+            "F-GABC piste un six on s'aligne et on attend",
+            "F-GABC je m'aligne et j'attends",
+            "F-GABC alignement piste seize et attente",
+            "F-GABC on va s'aligner et attendre"
+        };
+        foreach (string sample in samples)
+        {
+            var engine = new AtcEngine(new AtisService());
+            engine.Handle(tower,
+                "Bron Tour F-GABC point d'attente A1 prêt au départ",
+                "F-GABC", telemetry);
+            AtcResponse response = engine.Handle(tower, sample, "F-GABC", telemetry);
+            Expect(string.IsNullOrWhiteSpace(response.Text),
+                "Lineup readback should be accepted: " + sample);
+            Expect(engine.IsAwaitingRunwayAlignment("F-GABC"),
+                "Airplane must wait for physical alignment.");
+        }
+        var geo = new AtcEngine(new AtisService());
+        var now = new DateTimeOffset(2026, 10, 16, 12, 0, 0, TimeSpan.Zero);
+        geo.Handle(tower, "Bron Tour F-GABC point d'attente A1 prêt au départ",
+            "F-GABC", telemetry);
+        geo.Handle(tower, "F-GABC on s aligne et on attend", "F-GABC", telemetry);
+        telemetry.LatitudeDeg = 45.7290000;
+        telemetry.LongitudeDeg = 4.9436000;
+        telemetry.HeadingMagneticDeg = 163.39;
+        Expect(geo.ObserveAlignedForTakeoff("F-GABC", tower,
+            telemetry, now) == null, "Begin alignment watch.");
+        telemetry.HeadingMagneticDeg = 90;
+        geo.ObserveAlignedForTakeoff("F-GABC", tower, telemetry, now.AddSeconds(3));
+        telemetry.HeadingMagneticDeg = 163.39;
+        geo.ObserveAlignedForTakeoff("F-GABC", tower, telemetry, now.AddSeconds(4));
+        Expect(geo.ObserveAlignedForTakeoff("F-GABC", tower,
+            telemetry, now.AddSeconds(8)) == null, "Reset on heading change.");
+        ExpectContains(geo.ObserveAlignedForTakeoff("F-GABC", tower,
+            telemetry, now.AddSeconds(9.1))?.Text, "autorisé décollage",
+            "Auto-clear after five continuous seconds.");
+    }
+
     private static void VerifyAtcFlow()
     {
         var atis = new AtisService();
@@ -971,20 +1022,27 @@ internal static class Program
                 lineUpReadback.Text),
             "A correct line-up-and-wait readback must not trigger an immediate ATC reply.");
 
-        Expect(
-            lineUpReadback.ControllerFollowUpDelaySeconds == 18,
-            "A line-up-and-wait readback should schedule a Tower follow-up after about twenty seconds.");
+        Expect(lineUpReadback.ControllerFollowUpDelaySeconds == null,
+            "No fixed delay without actual lineup on the runway.");
 
-        AtcResponse takeoff =
-            engine.BuildScheduledFollowUp(
-                "F-GABC",
-                tower,
-                telemetry);
-
-        ExpectContains(
-            takeoff.Text,
-            "autorisé décollage",
-            "The scheduled Tower follow-up should issue take-off clearance when the runway is free.");
+        telemetry.LatitudeDeg = 45.7290000;
+        telemetry.LongitudeDeg = 4.9436000;
+        telemetry.HeadingMagneticDeg = 163.39;
+        telemetry.GroundSpeedKt = 0;
+        telemetry.IsOnGround = true;
+        var alignedAt = new DateTimeOffset(2026, 10, 16, 12, 0, 0, TimeSpan.Zero);
+        Expect(engine.ObserveAlignedForTakeoff("F-GABC", tower,
+            telemetry, alignedAt) == null, "Must first detect lineup.");
+        Expect(engine.ObserveAlignedForTakeoff("F-GABC", tower,
+            telemetry, alignedAt.AddSeconds(4.9)) == null,
+            "Cannot clear before five full seconds.");
+        AtcResponse takeoff = engine.ObserveAlignedForTakeoff(
+            "F-GABC", tower, telemetry, alignedAt.AddSeconds(5.1));
+        ExpectContains(takeoff?.Text, "autorisé décollage",
+            "Spontaneous clearance when runway aligned for five seconds.");
+        Expect(engine.ObserveAlignedForTakeoff("F-GABC", tower,
+            telemetry, alignedAt.AddSeconds(6)) == null,
+            "No duplicate departure clearance.");
 
         AtcResponse takeoffReadback =
             engine.Handle(
