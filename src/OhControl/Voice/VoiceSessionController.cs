@@ -24,7 +24,7 @@ namespace OhControl.Voice
         private readonly AtisService _atisService;
         private readonly AtcEngine _atcEngine;
         private readonly LflyFlightPhaseDetector _phaseDetector;
-        private readonly MultiplayerSession _multiplayer;
+        private readonly DirectMultiplayerSession _multiplayer;
 
         private readonly SemaphoreSlim _transmissionGate =
             new SemaphoreSlim(1, 1);
@@ -41,6 +41,7 @@ namespace OhControl.Voice
         private readonly ElevenLabsClient _elevenLabs;
 
         private TelemetrySnapshot _latestTelemetry;
+        private MultiplayerPlayerState _localPlayerState;
         private bool _simulatorConnected;
         private RadioStationKind _testStationKind =
             RadioStationKind.Tower;
@@ -86,7 +87,7 @@ namespace OhControl.Voice
             _phaseDetector = new LflyFlightPhaseDetector();
             _elevenLabs = new ElevenLabsClient(_settings);
             _elevenLabs.Warning += warning => StatusChanged?.Invoke(warning);
-            _multiplayer = new MultiplayerSession(_settings);
+            _multiplayer = new DirectMultiplayerSession(_settings);
 
             _pushToTalk.Pressed += OnPttPressed;
             _pushToTalk.Released += OnPttReleased;
@@ -106,6 +107,9 @@ namespace OhControl.Voice
 
             _multiplayer.RemoteAudioChunkReceived +=
                 OnRemoteAudioChunkReceived;
+
+            _multiplayer.RemoteAtcAudioReceived +=
+                OnRemoteAtcAudioReceived;
 
             RefreshStation();
         }
@@ -139,14 +143,10 @@ namespace OhControl.Voice
 
         public async Task StartAsync()
         {
-            if (_settings.IsMultiplayerConfigured)
-            {
+            if (_settings.IsDirectMultiplayerConfigured)
                 await _multiplayer.ConnectAsync().ConfigureAwait(false);
-            }
             else
-            {
-                MultiplayerStatusChanged?.Invoke("Multiplayer disabled.");
-            }
+                MultiplayerStatusChanged?.Invoke("Session directe désactivée.");
         }
 
         public async Task TestRadioOutputAsync()
@@ -268,7 +268,7 @@ namespace OhControl.Voice
                 _activeRunway +
                 reportingPointLabel);
 
-            _multiplayer.UpdateLocalTelemetry(
+            _localPlayerState =
                 new MultiplayerPlayerState
                 {
                     PlayerId = _settings.PlayerId,
@@ -298,7 +298,16 @@ namespace OhControl.Voice
                     NearbyReportingPoint =
                         reportingPoint?.Point?.Code,
                     IsTransmitting = _microphone.IsRecording
-                });
+                };
+
+            _multiplayer.UpdateLocalTelemetry(_localPlayerState);
+            RefreshAtcTraffic();
+
+            if ((!_settings.DirectMultiplayerEnabled || _multiplayer.IsHost) &&
+                _currentStation?.Kind == RadioStationKind.Tower &&
+                _atcEngine.IsAwaitingRunwayAlignment(_settings.PilotCallsign))
+                _ = CheckAutoTakeoffAsync(_settings.PilotCallsign,
+                    _currentStation, telemetry, CurrentFrequencyMhz);
         }
 
         public async Task UpdateSettingsAsync(
@@ -609,6 +618,15 @@ namespace OhControl.Voice
                     CurrentFrequencyMhz)
                     .ConfigureAwait(false);
 
+                if (_settings.DirectMultiplayerEnabled &&
+                    !_multiplayer.IsHost)
+                {
+                    StatusChanged?.Invoke(_multiplayer.HasPeer
+                        ? "Message reçu par l'ATC hôte — attente de réponse…"
+                        : "Aucun hôte ATC connecté : transmission non traitée.");
+                    return;
+                }
+
                 AtcResponse response = _atcEngine.Handle(
                     _currentStation,
                     transcript,
@@ -648,6 +666,9 @@ namespace OhControl.Voice
                         CancellationToken.None,
                         CurrentVoiceMode)
                     .ConfigureAwait(false);
+
+                await _multiplayer.BroadcastAtcAudioAsync(
+                    audio, CurrentFrequencyMhz).ConfigureAwait(false);
 
                 await _audioPlayer.PlayAsync(
                     audio,
@@ -839,8 +860,25 @@ namespace OhControl.Voice
         private void OnRemotePlayersChanged(
             IReadOnlyList<MultiplayerPlayerState> players)
         {
-            _atcEngine.UpdateTraffic(players);
+            RefreshAtcTraffic();
             RemotePlayersChanged?.Invoke(players);
+
+            if (_settings.DirectMultiplayerEnabled && _multiplayer.IsHost)
+            {
+                foreach (var pilot in players)
+                {
+                    if (pilot == null ||
+                        string.IsNullOrWhiteSpace(pilot.Callsign) ||
+                        !_atcEngine.IsAwaitingRunwayAlignment(pilot.Callsign))
+                        continue;
+
+                    RadioStation station = _radioRouter.Resolve(pilot.Com1ActiveMhz);
+                    if (station?.Kind == RadioStationKind.Tower &&
+                        (DateTime.UtcNow - pilot.ReceivedAtUtc).TotalSeconds < 3)
+                        _ = CheckAutoTakeoffAsync(pilot.Callsign,
+                            station, RemoteTelemetry(pilot), station.FrequencyMhz);
+                }
+            }
         }
 
         private void OnRemoteTransmissionChanged(
@@ -894,64 +932,158 @@ namespace OhControl.Voice
         }
 
         private void OnRemoteTranscriptReceived(
-            MultiplayerPlayerState player,
-            string transcript)
+            MultiplayerPlayerState player, string transcript)
         {
-            if (player == null ||
-                !SameFrequency(
-                    player.Com1ActiveMhz,
-                    CurrentFrequencyMhz) ||
-                !CanReceiveCurrentFrequency())
-            {
-                return;
-            }
+            if (player == null) return;
 
-            RemoteRadioTextReceived?.Invoke(
-                player.Callsign +
-                ": " +
-                transcript);
+            if (SameFrequency(player.Com1ActiveMhz, CurrentFrequencyMhz) &&
+                CanReceiveCurrentFrequency())
+                RemoteRadioTextReceived?.Invoke(
+                    player.Callsign + ": " + transcript);
+
+            // The host owns all ATC state and responds to both aircraft.
+            // The guest NEVER computes its own ATC clearance.
+            if (_settings.DirectMultiplayerEnabled && _multiplayer.IsHost)
+                _ = ProcessRemotePilotAsync(player, transcript);
         }
 
         private void OnRemoteAtcResponseReceived(
-            MultiplayerPlayerState sourcePlayer,
-            string response,
-            double frequencyMhz)
+            MultiplayerPlayerState sourcePlayer, string response, double frequency)
         {
-            if (!SameFrequency(
-                    frequencyMhz,
-                    CurrentFrequencyMhz) ||
-                !CanReceiveCurrentFrequency() ||
-                !_settings.IsElevenLabsConfigured)
-            {
-                return;
-            }
-
-            ControllerTextGenerated?.Invoke(response);
-            _ = PlayRemoteAtcAsync(response);
+            if (SameFrequency(frequency, CurrentFrequencyMhz) &&
+                CanReceiveCurrentFrequency())
+                ControllerTextGenerated?.Invoke(response);
+            // Voice is transmitted by the host, not synthesized twice.
         }
 
-        private async Task PlayRemoteAtcAsync(string response)
+        private void OnRemoteAtcAudioReceived(
+            MultiplayerPlayerState sourcePlayer, double frequency, byte[] audio)
+        {
+            if (SameFrequency(frequency, CurrentFrequencyMhz) &&
+                CanReceiveCurrentFrequency() && !_microphone.IsRecording)
+                _ = PlaySharedAtcAudioAsync(audio);
+        }
+
+        private async Task PlaySharedAtcAudioAsync(byte[] audio)
         {
             try
             {
-                byte[] audio =
-                    await _elevenLabs.SynthesizeAsync(
-                        response,
-                        CancellationToken.None,
-                        CurrentVoiceMode)
-                    .ConfigureAwait(false);
-
-                await _audioPlayer.PlayAsync(
-                    audio,
-                    CancellationToken.None,
-                    CurrentSignalQuality)
-                    .ConfigureAwait(false);
+                await _audioPlayer.PlayAsync(audio, CancellationToken.None,
+                    CurrentSignalQuality).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                StatusChanged?.Invoke(
-                    "ATC multijoueur : " + ex.Message);
+                StatusChanged?.Invoke("Réception ATC : " + ex.Message);
             }
+        }
+
+        private void RefreshAtcTraffic()
+        {
+            var traffic = _multiplayer.RemotePlayers.ToList();
+            if (_localPlayerState != null)
+                traffic.Add(_localPlayerState);
+            _atcEngine.UpdateTraffic(traffic);
+        }
+
+        private TelemetrySnapshot RemoteTelemetry(MultiplayerPlayerState pilot)
+        {
+            // Host weather is authoritative for both aircraft.
+            TelemetrySnapshot host = _latestTelemetry;
+            return new TelemetrySnapshot
+            {
+                LatitudeDeg = pilot.LatitudeDeg,
+                LongitudeDeg = pilot.LongitudeDeg,
+                AltitudeFt = pilot.AltitudeFt,
+                HeadingMagneticDeg = pilot.HeadingDeg,
+                GroundSpeedKt = pilot.GroundSpeedKt,
+                IndicatedAirspeedKt = pilot.IndicatedAirspeedKt,
+                IsOnGround = pilot.IsOnGround,
+                Com1ActiveMhz = pilot.Com1ActiveMhz,
+                Com1Receive = pilot.Com1Receive,
+                Com1Transmit = pilot.Com1Transmit,
+                WindDirectionTrueDeg = host?.WindDirectionTrueDeg ?? 160,
+                WindSpeedKt = host?.WindSpeedKt ?? 5,
+                SeaLevelPressureMb = host?.SeaLevelPressureMb ?? 1013,
+                AmbientTemperatureC = host?.AmbientTemperatureC ?? 20,
+                VisibilityMeters = host?.VisibilityMeters ?? 10000
+            };
+        }
+
+        private async Task ProcessRemotePilotAsync(
+            MultiplayerPlayerState player, string transcript)
+        {
+            RadioStation station = _radioRouter.Resolve(player.Com1ActiveMhz);
+            if (station == null || station.Kind == RadioStationKind.Atis ||
+                string.IsNullOrWhiteSpace(player.Callsign))
+                return;
+
+            await _transmissionGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (!_multiplayer.HasPeer) return;
+                AtcResponse reply = _atcEngine.Handle(
+                    station, transcript, player.Callsign,
+                    RemoteTelemetry(player));
+                await SendSharedAtcReplyAsync(
+                    reply, player.Callsign, station).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                StatusChanged?.Invoke("ATC hôte : " + ex.Message);
+            }
+            finally { _transmissionGate.Release(); }
+        }
+
+        private async Task CheckAutoTakeoffAsync(
+            string callsign, RadioStation station,
+            TelemetrySnapshot telemetry, double frequency)
+        {
+            // Avoid queuing 5 checks/second when another transmission is active.
+            if (!_transmissionGate.Wait(0)) return;
+            try
+            {
+                AtcResponse reply = _atcEngine.ObserveAlignedForTakeoff(
+                    callsign, station, telemetry, DateTimeOffset.UtcNow);
+                if (reply != null)
+                    await SendSharedAtcReplyAsync(reply, callsign, station)
+                        .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                StatusChanged?.Invoke("Rappel Tour automatique : " + ex.Message);
+            }
+            finally { _transmissionGate.Release(); }
+        }
+
+        private async Task SendSharedAtcReplyAsync(
+            AtcResponse reply, string callsign, RadioStation station)
+        {
+            if (reply == null) return;
+            if (!string.IsNullOrWhiteSpace(reply.Feedback))
+                FeedbackGenerated?.Invoke(reply.Feedback);
+            if (string.IsNullOrWhiteSpace(reply.Text)) return;
+
+            bool localReceive =
+                SameFrequency(station.FrequencyMhz, CurrentFrequencyMhz) &&
+                CanReceiveCurrentFrequency();
+
+            if (localReceive)
+                ControllerTextGenerated?.Invoke(reply.Text);
+
+            await _multiplayer.BroadcastAtcResponseAsync(
+                reply.Text, station.FrequencyMhz, callsign).ConfigureAwait(false);
+
+            AtcVoiceMode mode = station.Kind == RadioStationKind.Ground
+                ? AtcVoiceMode.Ground : AtcVoiceMode.Tower;
+            byte[] audio = await _elevenLabs.SynthesizeAsync(
+                reply.Text, CancellationToken.None, mode).ConfigureAwait(false);
+            await _multiplayer.BroadcastAtcAudioAsync(
+                audio, station.FrequencyMhz).ConfigureAwait(false);
+
+            if (localReceive)
+                await _audioPlayer.PlayAsync(audio,
+                    CancellationToken.None, CurrentSignalQuality)
+                    .ConfigureAwait(false);
         }
 
         private void OnRemoteAudioChunkReceived(
