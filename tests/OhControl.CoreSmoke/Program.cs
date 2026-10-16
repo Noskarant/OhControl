@@ -25,6 +25,7 @@ internal static class Program
             VerifyGroundHandoffOnlyAtHoldingPoint();
             VerifyFutureReadyCallDoesNotHandoff();
             VerifyVhfNoiseProfile();
+            VerifyDirectHostAndGuestNetwork();
 
             Console.WriteLine("OhControl core smoke tests passed.");
             return 0;
@@ -34,6 +35,112 @@ internal static class Program
             Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    private static void VerifyDirectHostAndGuestNetwork()
+    {
+        // End-to-end loopback: two PCs, two callsigns, one room, radio/audio.
+        int port;
+        var probe = new System.Net.Sockets.TcpListener(
+            System.Net.IPAddress.Loopback, 0);
+        probe.Start();
+        port = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+
+        var hostSettings = new OhControl.Configuration.OhControlSettings
+        {
+            PlayerId = "pc-noe",
+            PilotCallsign = "F-GABC",
+            DirectMultiplayerEnabled = true,
+            DirectMultiplayerIsHost = true,
+            DirectMultiplayerPort = port,
+            DirectMultiplayerRoomCode = "test-room-strong-shared-code"
+        };
+        var guestSettings = new OhControl.Configuration.OhControlSettings
+        {
+            PlayerId = "pc-kelian",
+            PilotCallsign = "F-HXYZ",
+            DirectMultiplayerEnabled = true,
+            DirectMultiplayerIsHost = false,
+            DirectMultiplayerHostAddress = "127.0.0.1",
+            DirectMultiplayerPort = port,
+            DirectMultiplayerRoomCode = hostSettings.DirectMultiplayerRoomCode
+        };
+
+        using (var host =
+            new OhControl.Multiplayer.DirectMultiplayerSession(hostSettings))
+        using (var guest =
+            new OhControl.Multiplayer.DirectMultiplayerSession(guestSettings))
+        {
+            string pilot = null;
+            string atc = null;
+            byte[] audio = null;
+            byte[] pilotAudio = null;
+            host.RemoteTranscriptReceived += (p, message) =>
+                pilot = p.Callsign + ": " + message;
+            guest.RemoteAtcResponseReceived += (p, message, freq) =>
+                atc = message;
+            guest.RemoteAtcAudioReceived += (p, freq, bytes) =>
+                audio = bytes;
+            host.RemoteAudioChunkReceived += (p, freq, bytes) =>
+                pilotAudio = bytes;
+
+            host.ConnectAsync().GetAwaiter().GetResult();
+            guest.ConnectAsync().GetAwaiter().GetResult();
+            WaitFor(() => host.RemotePlayers.Count == 1 &&
+                guest.RemotePlayers.Count == 1,
+                "Direct host and guest must discover both identities.");
+            Expect(host.RemotePlayers[0].Callsign == "F-HXYZ" &&
+                guest.RemotePlayers[0].Callsign == "F-GABC",
+                "Pilot identification must distinguish the two aircraft.");
+
+            guest.UpdateLocalTelemetry(
+                new OhControl.Multiplayer.MultiplayerPlayerState
+                {
+                    PlayerId = guestSettings.PlayerId,
+                    Callsign = guestSettings.PilotCallsign,
+                    LatitudeDeg = 45.735,
+                    LongitudeDeg = 4.941,
+                    Com1ActiveMhz = 118.100,
+                    CircuitPhase = "Final",
+                    IsOnGround = false
+                });
+            WaitFor(() =>
+                host.RemotePlayers[0].CircuitPhase == "Final",
+                "Host must receive live guest telemetry.");
+
+            guest.BroadcastTranscriptAsync(
+                "Bron Tour F-HXYZ en finale piste 16", 118.100)
+                .GetAwaiter().GetResult();
+            WaitFor(() => pilot != null, "Host must receive guest transcript.");
+            Expect(pilot.Contains("F-HXYZ"), "Guest identity must accompany radio.");
+
+            byte[] testAudio = new byte[] { 0x01, 0x02, 0x03 };
+            host.BroadcastAtcResponseAsync(
+                "F-HXYZ poursuivez", 118.100, "F-HXYZ")
+                .GetAwaiter().GetResult();
+            host.BroadcastAtcAudioAsync(testAudio, 118.100)
+                .GetAwaiter().GetResult();
+            WaitFor(() => atc != null && audio != null,
+                "Guest must receive one host ATC text and one audio packet.");
+            Expect(atc.Contains("F-HXYZ") && audio.Length == 3,
+                "ATC voice bytes must be shared, not regenerated.");
+
+            guest.BroadcastVoiceChunkAsync(testAudio, 118.100)
+                .GetAwaiter().GetResult();
+            WaitFor(() => pilotAudio != null,
+                "Host must receive live pilot radio audio.");
+            Expect(pilotAudio.Length == 3,
+                "Pilot radio packets must not be lost.");
+        }
+    }
+
+    private static void WaitFor(Func<bool> condition, string error)
+    {
+        var limit = DateTime.UtcNow.AddSeconds(6);
+        while (!condition() && DateTime.UtcNow < limit)
+            System.Threading.Thread.Sleep(25);
+        Expect(condition(), error);
     }
 
     private static void VerifyElevenV4Speech()
