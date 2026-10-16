@@ -184,13 +184,23 @@ namespace OhControl.Voice
                 StatusChanged?.Invoke(
                     "Test de la voix ATC…");
 
-                const string sample =
-                    "Fox Golf Alpha Bravo Charlie, Bron Sol, bonjour.";
+                AtcVoiceMode mode =
+                    _currentStation?.Kind == RadioStationKind.Atis
+                        ? AtcVoiceMode.Atis
+                        : CurrentVoiceMode;
+
+                string sample =
+                    mode == AtcVoiceMode.Ground
+                        ? "Fox Golf Alpha Bravo Charlie, Bron Sol, bonjour."
+                        : mode == AtcVoiceMode.Atis
+                            ? "Bron information Alpha, piste un six en service."
+                            : "Fox Golf Alpha Bravo Charlie, Bron Tour, bonjour.";
 
                 byte[] audio =
                     await _elevenLabs.SynthesizeAsync(
                         sample,
-                        CancellationToken.None)
+                        CancellationToken.None,
+                        mode)
                     .ConfigureAwait(false);
 
                 StatusChanged?.Invoke(
