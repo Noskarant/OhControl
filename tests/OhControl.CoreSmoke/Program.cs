@@ -707,13 +707,17 @@ internal static class Program
             Com1ActiveMhz = 121.705
         };
 
+        // ATIS letters change every half-hour. Tests that are not testing
+        // incorrect ATIS must announce the currently active information.
+        string currentInformation = atis.Build(telemetry).Information;
+
         var naturalEngine =
             new AtcEngine(atis);
 
         AtcResponse naturalCircuitRequest =
             naturalEngine.Handle(
                 ground,
-                "Bron Sol bonjour F-GABC au parking demande une clairance pour faire des tours de piste information Alpha",
+                "Bron Sol bonjour F-GABC au parking demande une clairance pour faire des tours de piste information " + currentInformation,
                 "F-GABC",
                 telemetry);
 
@@ -749,7 +753,7 @@ internal static class Program
         AtcResponse taxi =
             engine.Handle(
                 ground,
-                "Bron Sol F-GABC demande roulage tour de piste information Alpha",
+                "Bron Sol F-GABC demande roulage tour de piste information " + currentInformation,
                 "F-GABC",
                 telemetry);
 
