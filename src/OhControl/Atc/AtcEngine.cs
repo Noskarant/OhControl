@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using OhControl.Lfly;
 using OhControl.Multiplayer;
 using OhControl.Radio;
@@ -339,53 +340,66 @@ namespace OhControl.Atc
                 state != TrainingState.HoldingPoint)
                 return false;
 
-            if (string.IsNullOrWhiteSpace(text) ||
-                ContainsAny(text,
-                    "parking",
-                    "pas bouge",
-                    "pas encore",
-                    "encore au",
-                    "je roule",
-                    "on roule",
-                    "nous roulons",
-                    "roulons",
-                    "roulage",
-                    "je rejoins",
-                    "on rejoint",
-                    "nous rejoignons",
-                    "rejoindre",
-                    "en route vers",
-                    "rappellerai",
-                    "rappelerai",
-                    "rappelerons",
-                    "rappelez",
-                    "rappeler",
-                    "je vais",
-                    "on va",
-                    "quand je",
-                    "quand nous",
-                    "une fois au",
-                    "avant de",
-                    "je ne suis pas"))
+            if (string.IsNullOrWhiteSpace(text))
                 return false;
 
-            bool explicitlyAtHoldingPoint =
-                ContainsAny(text,
-                    "au point d attente",
-                    "au point d arret",
-                    "arrive au point",
-                    "arrives au point",
-                    "sommes au point",
-                    "on est au point",
-                    "je suis au point");
+            // Crucial: "on vous rappelle pret au depart" is an acknowledgement
+            // of what the pilot WILL do, not a present position report.
+            // Normalize() already strips accents and punctuation.
+            bool futureCall = Regex.IsMatch(
+                text,
+                @"\b(?:rappel\w*|rappell\w*|rappelez|recontact\w*|previendr\w*)\b",
+                RegexOptions.CultureInvariant);
 
-            // Standard terse VFR reports include "point d'attente A1 prêt".
-            // They are accepted only when a readiness statement is present.
-            bool terseReadyHoldingPoint =
-                IsReadyForDeparture(text) &&
-                ContainsAny(text, "point d attente", "point d arret");
+            bool atParkingOrTaxiing = ContainsAny(
+                text,
+                "parking",
+                "pas bouge",
+                "pas encore",
+                "encore au",
+                "je roule",
+                "on roule",
+                "nous roulons",
+                "roulons",
+                "roulage",
+                "je rejoins",
+                "on rejoint",
+                "nous rejoignons",
+                "rejoindre",
+                "en route vers",
+                "vers le point",
+                "jusqu au point",
+                "en direction du point",
+                "je vais",
+                "on va",
+                "quand je",
+                "quand nous",
+                "une fois au",
+                "avant de",
+                "je ne suis pas");
 
-            return explicitlyAtHoldingPoint || terseReadyHoldingPoint;
+            if (futureCall || atParkingOrTaxiing)
+                return false;
+
+            // Transfer only when the pilot POSITIVELY reports being at
+            // the holding point. Merely repeating "point d'attente" and
+            // "pret au depart" from a taxi clearance is insufficient.
+            bool confirmedPosition = Regex.IsMatch(
+                text,
+                @"\b(?:je suis|nous sommes|on est|sommes|je me trouve|nous voila|on se trouve|je suis arrive|nous sommes arrives|on est arrive|arrive|arrives|arrivons|en place|position)\s+(?:bien\s+)?au point d (?:attente|arret)\b",
+                RegexOptions.CultureInvariant);
+
+            // Short, standard VFR position report: "point d'attente
+            // A1, pret au depart". Exclude QNH/runway readbacks to avoid
+            // confusing a collation with arrival at the point.
+            bool terseHoldingPointCall =
+                !ContainsAny(text, "qnh", "q n h", "piste", "roulez") &&
+                Regex.IsMatch(
+                    text,
+                    @"\bpoint d (?:attente|arret)\s+(?:[a-z]+\s+)?[a-z]?\d+\s+(?:je suis\s+|on est\s+|sommes\s+)?prets?(?:\s+au depart)?\b",
+                    RegexOptions.CultureInvariant);
+
+            return confirmedPosition || terseHoldingPointCall;
         }
 
         private AtcResponse HandleGround(
@@ -1109,25 +1123,9 @@ namespace OhControl.Atc
                             : "") +
                         ".";
 
-                    if (station != null &&
-                        station.Kind ==
-                        RadioStationKind.Ground &&
-                        IsGroundHoldingPointReport(text, callsignKey))
-                    {
-                        SetState(
-                            callsignKey,
-                            TrainingState.HoldingPoint);
-
-                        return BuildFrequencyHandoff(
-                            callsignKey,
-                            spokenCallsign,
-                            "Bron Tour",
-                            118.100,
-                            RadioStationKind.Ground,
-                            feedback +
-                            " Prêt au départ reconnu ; transfert Tour immédiat.");
-                    }
-
+                    // A mandatory taxi clearance readback completes the
+                    // readback, never a Tower handoff. The pilot must later
+                    // report being physically at the holding point.
                     return new AtcResponse
                     {
                         Feedback = feedback

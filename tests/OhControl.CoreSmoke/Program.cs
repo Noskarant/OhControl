@@ -19,6 +19,7 @@ internal static class Program
             VerifyReportingPoints();
             VerifyAtcFlow();
             VerifyGroundHandoffOnlyAtHoldingPoint();
+            VerifyFutureReadyCallDoesNotHandoff();
             VerifyVhfNoiseProfile();
 
             Console.WriteLine("OhControl core smoke tests passed.");
@@ -314,6 +315,56 @@ internal static class Program
             "Invalid telemetry must not break the audio profile.");
     }
 
+    private static void VerifyFutureReadyCallDoesNotHandoff()
+    {
+        var station = new RadioStation(
+            RadioStationKind.Ground, "BRON Sol", 121.705);
+        var position = new TelemetrySnapshot
+        {
+            IsOnGround = true,
+            GroundSpeedKt = 0,
+            WindDirectionTrueDeg = 160,
+            WindSpeedKt = 5,
+            SeaLevelPressureMb = 1018
+        };
+        string[] readbacks =
+        {
+            "F-GABC point d'attente A1 piste 16 QNH 1018 et on vous rappelle prêt au départ",
+            "F-GABC roulez point d'attente A1 piste 16 QNH 1018, on vous rappelle prêt au départ",
+            "F-GABC point d'attente A1 piste 16 QNH 1018 on vous rappellera prêt au départ",
+            "F-GABC point d'attente A1 piste 16 QNH 1018, nous vous rappelons prêt au départ",
+            "F-GABC point d'attente A1 piste 16 QNH 1018, je vous rappelle prêt au départ",
+            "F-GABC point d'attente A1 piste 16 QNH 1018, rappelez prêt au départ"
+        };
+
+        foreach (string readback in readbacks)
+        {
+            var engine = new AtcEngine(new AtisService());
+            engine.Handle(station,
+                "Bron Sol F-GABC demande roulage pour tours de piste",
+                "F-GABC", position);
+
+            var response = engine.Handle(
+                station, readback, "F-GABC", position);
+            Expect(!((response.Text ?? "").Contains("Bron Tour")),
+                "A future ready call during taxi readback must NEVER transfer: " +
+                readback);
+
+            // Even on a subsequent radio message, a future statement
+            // alone must not turn into a position report.
+            var future = engine.Handle(
+                station, "F-GABC et on vous rappelle prêt au départ",
+                "F-GABC", position);
+            Expect(!((future.Text ?? "").Contains("Bron Tour")),
+                "The phrase 'on vous rappelle' announces a future call.");
+            var arrival = engine.Handle(
+                station, "F-GABC je suis au point d'attente A1",
+                "F-GABC", position);
+            ExpectContains(arrival.Text, "Bron Tour",
+                "An explicit subsequent holding-point report must transfer.");
+        }
+    }
+
     private static void VerifyGroundHandoffOnlyAtHoldingPoint()
     {
         var ground = new RadioStation(
@@ -582,20 +633,30 @@ internal static class Program
                 "F-GABC",
                 telemetry);
 
+        Expect(!((combinedReady.Text ?? "").Contains("Bron Tour")),
+            "Taxi readback combined with 'on est pret' is NOT proof of arrival at the hold.");
+
+        AtcResponse combinedArrival =
+            combinedReadyEngine.Handle(
+                ground,
+                "F-GABC je suis au point d'attente A1, prêt au départ",
+                "F-GABC",
+                telemetry);
+
         ExpectContains(
-            combinedReady.Text,
+            combinedArrival.Text,
             "Bron Tour",
-            "Combined taxi readback and ready call must immediately trigger the Tower handoff.");
+            "Explicit holding-point arrival must trigger the Tower handoff.");
 
         ExpectContains(
-            combinedReady.Text,
+            combinedArrival.Text,
             "unité, unité, huit décimale unité",
-            "Ground-to-Tower handoff must include the spoken 118.100 frequency.");
+            "Ground-to-Tower handoff must include 118.100 frequency.");
 
         ExpectContains(
-            combinedReady.Text,
+            combinedArrival.Text,
             "au revoir",
-            "Combined ready handoff must end with au revoir.");
+            "True holding-point report handoff must end with au revoir.");
 
         var spokenReadbackEngine =
             new AtcEngine(atis);
