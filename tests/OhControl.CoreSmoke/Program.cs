@@ -10,6 +10,7 @@ internal static class Program
     {
         try
         {
+            VerifyElevenV4Speech();
             VerifyPttCaptureState();
             VerifyGroundProfile();
             VerifyIdentifierSpeech();
@@ -25,6 +26,39 @@ internal static class Program
             Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    private static void VerifyElevenV4Speech()
+    {
+        var dictionary = OhControl.ElevenLabs.ElevenV4Speech.CreateDictionaryRequest();
+        var rules = (Newtonsoft.Json.Linq.JArray)dictionary["rules"];
+
+        Expect(rules.Count == 3, "Bron dictionary must cover case variants.");
+        Expect((string)rules[0]["string_to_replace"] == "Bron" &&
+               (string)rules[0]["type"] == "phoneme" &&
+               (string)rules[0]["alphabet"] == "ipa" &&
+               (string)rules[0]["phoneme"] == "bʁɔ̃",
+               "Bron must be nasal IPA, not Bronne.");
+
+        var locator = OhControl.ElevenLabs.ElevenV4Speech.CreateLocator(
+            "dict-1", "version-1");
+        string message = "Fox Golf Alpha Bravo Charlie, Bron Sol, bonjour.";
+        var payload = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
+            message, "existing-voice", locator);
+
+        Expect((string)payload["model_id"] == "eleven_v4",
+            "Synthesis must use Eleven v4.");
+        Expect((string)payload["language_code"] == "fr",
+            "ATC voice must enforce French.");
+        Expect((string)payload["inputs"][0]["voice_id"] == "existing-voice",
+            "Must preserve existing voice ID.");
+        Expect((string)payload["inputs"][0]["text"] == message,
+            "Pronunciation must not rewrite displayed ATC text.");
+        Expect((string)payload["pronunciation_dictionary_locators"][0]
+            ["pronunciation_dictionary_id"] == "dict-1",
+            "Speech must reference the IPA dictionary.");
+        Expect(payload["voice_settings"] == null && payload["settings"] == null,
+            "Do not pass obsolete v2 settings to v4.");
     }
 
     private static void VerifyPttCaptureState()

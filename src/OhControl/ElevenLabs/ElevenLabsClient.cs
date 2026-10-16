@@ -16,9 +16,14 @@ namespace OhControl.ElevenLabs
     public sealed class ElevenLabsClient : IDisposable
     {
         private const string TtsLanguageCode = "fr";
-        private const string TtsCacheVersion = "fr-radio-v3-controller";
+        private const string TtsCacheVersion = "fr-radio-v4-ipa-bron-v1";
         private readonly HttpClient _httpClient = new HttpClient();
         private readonly string _cacheDirectory;
+        private readonly string _pronunciationCachePath;
+        private readonly SemaphoreSlim _pronunciationLock = new SemaphoreSlim(1, 1);
+        private string _activeDictionaryFingerprint;
+        private string _activeDictionaryId;
+        private string _activeDictionaryVersion;
         private OhControlSettings _settings;
 
         public ElevenLabsClient(OhControlSettings settings)
@@ -30,6 +35,9 @@ namespace OhControl.ElevenLabs
                 "speech-cache");
 
             Directory.CreateDirectory(_cacheDirectory);
+            _pronunciationCachePath = Path.Combine(
+                Directory.GetParent(_cacheDirectory).FullName,
+                "pronunciation-eleven-v4.json");
         }
 
         public void UpdateSettings(OhControlSettings settings)
@@ -121,30 +129,22 @@ namespace OhControl.ElevenLabs
                 return File.ReadAllBytes(cachePath);
             }
 
-            string voiceId = Uri.EscapeDataString(_settings.ElevenLabsVoiceId.Trim());
-            string url =
-                "https://api.elevenlabs.io/v1/text-to-speech/" +
-                voiceId +
-                "?output_format=mp3_44100_128";
+            string apiKey = _settings.ElevenLabsApiKey;
+            string voiceId = _settings.ElevenLabsVoiceId.Trim();
 
-            var body = new JObject
-            {
-                ["text"] = text,
-                ["model_id"] = "eleven_flash_v2_5",
-                ["language_code"] = TtsLanguageCode,
-                ["voice_settings"] = new JObject
-                {
-                    ["stability"] = 0.64,
-                    ["similarity_boost"] = 0.84,
-                    ["style"] = 0.0,
-                    ["use_speaker_boost"] = true,
-                    ["speed"] = 1.04
-                }
-            };
+            // V4 standard uses the Dialogue API; the voice ID is unchanged.
+            JObject pronunciation = await GetPronunciationLocatorAsync(
+                apiKey, cancellationToken).ConfigureAwait(false);
+
+            const string url =
+                "https://api.elevenlabs.io/v1/text-to-dialogue?output_format=mp3_44100_128";
+
+            JObject body = ElevenV4Speech.CreateSpeechRequest(
+                text, voiceId, pronunciation);
 
             using (var request = new HttpRequestMessage(HttpMethod.Post, url))
             {
-                request.Headers.Add("xi-api-key", _settings.ElevenLabsApiKey);
+                request.Headers.Add("xi-api-key", apiKey);
                 request.Content = new StringContent(
                     body.ToString(Formatting.None),
                     Encoding.UTF8,
@@ -161,7 +161,7 @@ namespace OhControl.ElevenLabs
                     {
                         string error = Encoding.UTF8.GetString(bytes);
                         throw new InvalidOperationException(
-                            "ElevenLabs TTS " + (int)response.StatusCode + ": " + error);
+                            "ElevenLabs v4 TTS " + (int)response.StatusCode + ": " + error);
                     }
 
                     try
@@ -181,6 +181,117 @@ namespace OhControl.ElevenLabs
         public void Dispose()
         {
             _httpClient.Dispose();
+            _pronunciationLock.Dispose();
+        }
+
+        private async Task<JObject> GetPronunciationLocatorAsync(
+            string apiKey,
+            CancellationToken cancellationToken)
+        {
+            // Never persist the API key: use a digest to select the cache.
+            string fingerprint;
+            using (var sha = SHA256.Create())
+            {
+                byte[] digest = sha.ComputeHash(
+                    Encoding.UTF8.GetBytes(apiKey + "|" + ElevenV4Speech.DictionaryVersion));
+                fingerprint = BitConverter.ToString(digest).Replace("-", "");
+            }
+
+            await _pronunciationLock.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            try
+            {
+                if (_activeDictionaryFingerprint != fingerprint)
+                {
+                    _activeDictionaryFingerprint = null;
+                    _activeDictionaryId = null;
+                    _activeDictionaryVersion = null;
+
+                    try
+                    {
+                        if (File.Exists(_pronunciationCachePath))
+                        {
+                            JObject cached = JObject.Parse(
+                                File.ReadAllText(_pronunciationCachePath));
+
+                            if ((string)cached["fingerprint"] == fingerprint)
+                            {
+                                _activeDictionaryId = (string)cached["id"];
+                                _activeDictionaryVersion = (string)cached["version_id"];
+                            }
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Missing or corrupt metadata: recreate the dictionary.
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(_activeDictionaryId) ||
+                    string.IsNullOrWhiteSpace(_activeDictionaryVersion))
+                {
+                    using (var request = new HttpRequestMessage(
+                        HttpMethod.Post,
+                        "https://api.elevenlabs.io/v1/pronunciation-dictionaries/add-from-rules"))
+                    {
+                        request.Headers.Add("xi-api-key", apiKey);
+                        request.Content = new StringContent(
+                            ElevenV4Speech.CreateDictionaryRequest()
+                                .ToString(Formatting.None),
+                            Encoding.UTF8,
+                            "application/json");
+
+                        using (HttpResponseMessage response =
+                            await _httpClient.SendAsync(request, cancellationToken)
+                                .ConfigureAwait(false))
+                        {
+                            string json = await response.Content.ReadAsStringAsync()
+                                .ConfigureAwait(false);
+                            if (!response.IsSuccessStatusCode)
+                            {
+                                throw new InvalidOperationException(
+                                    "Dictionnaire de prononciation ElevenLabs " +
+                                    (int)response.StatusCode + ": " + json);
+                            }
+
+                            JObject created = JObject.Parse(json);
+                            _activeDictionaryId = (string)created["id"];
+                            _activeDictionaryVersion = (string)created["version_id"];
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(_activeDictionaryId) ||
+                        string.IsNullOrWhiteSpace(_activeDictionaryVersion))
+                    {
+                        throw new InvalidOperationException(
+                            "ElevenLabs n'a pas renvoyé les identifiants du dictionnaire.");
+                    }
+
+                    try
+                    {
+                        File.WriteAllText(
+                            _pronunciationCachePath,
+                            new JObject
+                            {
+                                ["fingerprint"] = fingerprint,
+                                ["id"] = _activeDictionaryId,
+                                ["version_id"] = _activeDictionaryVersion
+                            }.ToString(Formatting.None));
+                    }
+                    catch (Exception)
+                    {
+                        // The dictionary remains usable until next app restart.
+                    }
+                }
+
+                _activeDictionaryFingerprint = fingerprint;
+                return ElevenV4Speech.CreateLocator(
+                    _activeDictionaryId, _activeDictionaryVersion);
+            }
+            finally
+            {
+                _pronunciationLock.Release();
+            }
         }
 
         private void EnsureConfigured()
@@ -196,7 +307,7 @@ namespace OhControl.ElevenLabs
         {
             string source =
                 _settings.ElevenLabsVoiceId +
-                "|eleven_flash_v2_5|" +
+                "|" + ElevenV4Speech.ModelId + "|" +
                 TtsLanguageCode +
                 "|" +
                 TtsCacheVersion +
