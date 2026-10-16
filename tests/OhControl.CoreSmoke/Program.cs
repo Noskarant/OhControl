@@ -19,6 +19,8 @@ internal static class Program
             VerifyReportingPoints();
             VerifyAtcFlow();
             VerifyFrequencyTransferReadbackLifecycle();
+            VerifyAtisCorrectionAndReadbackErrors();
+            VerifyShortCallsignReadbacks();
             VerifyGroundHandoffOnlyAtHoldingPoint();
             VerifyFutureReadyCallDoesNotHandoff();
             VerifyVhfNoiseProfile();
@@ -539,6 +541,139 @@ internal static class Program
         ExpectContains(handoff.Text, "Bron Tour",
             "Ground handoff must be issued before testing its readback.");
         return engine;
+    }
+
+    private static void VerifyAtisCorrectionAndReadbackErrors()
+    {
+        var atis = new AtisService();
+        var telemetry = new TelemetrySnapshot
+        {
+            IsOnGround = true, WindDirectionTrueDeg = 160,
+            WindSpeedKt = 4, SeaLevelPressureMb = 1018
+        };
+        var ground = new RadioStation(
+            RadioStationKind.Ground, "Bron Sol", 121.705);
+        var tower = new RadioStation(
+            RadioStationKind.Tower, "Bron Tour", 118.100);
+        string actual = atis.Build(telemetry).Information;
+        string wrong = actual == "Echo" ? "Charlie" : "Echo";
+
+        var engine = new AtcEngine(atis);
+        AtcResponse incorrect = engine.Handle(
+            ground, "Bron Sol F-GABC au parking demande roulage pour tours de piste information " + wrong,
+            "F-GABC", telemetry);
+        ExpectContains(incorrect.Text, "négatif, information " + actual,
+            "Wrong ATIS information must be corrected at initial Ground contact.");
+        Expect((incorrect.Text ?? "").IndexOf("roulez point", StringComparison.OrdinalIgnoreCase) < 0,
+            "Do not grant a clearance following an explicitly incorrect ATIS letter.");
+
+        var correct = engine.Handle(
+            ground, "Bron Sol F-GABC demande roulage pour tours de piste information " + actual,
+            "F-GABC", telemetry);
+        ExpectContains(correct.Text, "roulez point",
+            "Correct ATIS information allows normal Ground clearance.");
+
+        AtcResponse wrongPoint = engine.Handle(
+            ground, "F-GABC je roule point d'attente A2 piste 16 QNH 1018",
+            "F-GABC", telemetry);
+        ExpectContains(wrongPoint.Text, "négatif, point d'attente Alpha un",
+            "Wrong A2 must be corrected to A1.");
+
+        AtcResponse wrongPointSpoken = engine.Handle(
+            ground, "F-GABC je roule point d'attente Alpha deux piste 16 QNH 1018",
+            "F-GABC", telemetry);
+        ExpectContains(wrongPointSpoken.Text, "négatif, point d'attente Alpha un",
+            "Spoken Alpha deux must be corrected to A1.");
+
+        AtcResponse wrongRunway = engine.Handle(
+            ground, "F-GABC point d'attente A1 piste trois quatre QNH 1018",
+            "F-GABC", telemetry);
+        ExpectContains(wrongRunway.Text, "négatif, piste un six",
+            "Wrong runway 34 must be corrected to 16.");
+
+        AtcResponse wrongQnh = engine.Handle(
+            ground, "F-GABC point d'attente A1 piste 16 QNH 1013",
+            "F-GABC", telemetry);
+        ExpectContains(wrongQnh.Text, "négatif, Q N H",
+            "Wrong QNH must be explicitly corrected.");
+
+        AtcResponse correctReadback = engine.Handle(
+            ground, "F-GABC je roule point d'attente A1 piste 16 QNH 1018, et on vous rappelle prêt au départ",
+            "F-GABC", telemetry);
+        Expect(string.IsNullOrWhiteSpace(correctReadback.Text),
+            "After correction, taxi readback must not produce Tower handoff.");
+
+        AtcResponse arrival = engine.Handle(
+            ground, "F-GABC je suis au point d'attente A1 prêt au départ",
+            "F-GABC", telemetry);
+        ExpectContains(arrival.Text, "Bron Tour",
+            "Confirmed holding-point report triggers tower handoff.");
+
+        var towerEngine = new AtcEngine(atis);
+        var wrongTowerInfo = towerEngine.Handle(
+            tower, "Bron Tour F-GABC au point d'attente A1 prêt information " + wrong,
+            "F-GABC", telemetry);
+        ExpectContains(wrongTowerInfo.Text, "information " + actual,
+            "Wrong ATIS information must also be corrected on Tower.");
+
+        var noAtisAnnounced = new AtcEngine(atis).Handle(
+            ground, "Bron Sol F-GABC demande roulage pour tour de piste",
+            "F-GABC", telemetry);
+        ExpectContains(noAtisAnnounced.Text, "roulez point",
+            "No explicitly wrong ATIS letter should not block normal request.");
+    }
+
+    private static void VerifyShortCallsignReadbacks()
+    {
+        var atis = new AtisService();
+        var telemetry = new TelemetrySnapshot
+        {
+            IsOnGround = true, WindDirectionTrueDeg = 160,
+            WindSpeedKt = 5, SeaLevelPressureMb = 1018
+        };
+        var ground = new RadioStation(
+            RadioStationKind.Ground, "Bron Sol", 121.705);
+        var engine = new AtcEngine(atis);
+        engine.Handle(ground,
+            "Bron Sol Fox Golf Alpha Bravo Charlie demande roulage",
+            "F-GABC", telemetry);
+
+        var wrongPoint = engine.Handle(ground,
+            "Fox Bravo Charlie point d'attente A2 piste 16 QNH 1018",
+            "F-GABC", telemetry);
+        ExpectContains(wrongPoint.Text, "Fox Bravo Charlie",
+            "Unambiguous abbreviated F-BC must be accepted and repeated in the reply.");
+
+        var correctReadback = engine.Handle(ground,
+            "Fox Bravo Charlie je roule point d'attente A1 piste 16 QNH 1018",
+            "F-GABC", telemetry);
+        Expect(string.IsNullOrWhiteSpace(correctReadback.Text),
+            "Abbreviated callsign must not invalidate a readback.");
+
+        var hold = engine.Handle(ground,
+            "Fox Bravo Charlie au point d'attente A1 prêt au départ",
+            "F-GABC", telemetry);
+        ExpectContains(hold.Text, "Bron Tour",
+            "Unambiguous short callsign must be accepted at holding point.");
+
+        var shortFreq = engine.Handle(ground,
+            "Fox Bravo Charlie cent dix huit virgule un au revoir",
+            "F-GABC", telemetry);
+        ExpectContains(shortFreq.Text, "Fox Bravo Charlie, au revoir",
+            "Short callsign may close the frequency readback.");
+
+        var ambiguous = new AtcEngine(atis);
+        ambiguous.UpdateTraffic(new[]
+        {
+            new MultiplayerPlayerState { Callsign = "F-DABC" }
+        });
+        ambiguous.Handle(ground,
+            "Bron Sol F-GABC demande roulage", "F-GABC", telemetry);
+        var collision = ambiguous.Handle(ground,
+            "Fox Bravo Charlie point d'attente A2 piste 16 QNH 1018",
+            "F-GABC", telemetry);
+        ExpectContains(collision.Text, "Fox Golf Alpha Bravo Charlie",
+            "Do not shorten ATC callsigns when another pilot has the same suffix.");
     }
 
     private static void VerifyAtcFlow()
