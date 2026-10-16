@@ -364,6 +364,11 @@ namespace OhControl.Voice
         private double CurrentFrequencyMhz =>
             _currentStation?.FrequencyMhz ?? 0;
 
+        private AtcVoiceMode CurrentVoiceMode =>
+            _currentStation?.Kind == RadioStationKind.Ground
+                ? AtcVoiceMode.Ground
+                : AtcVoiceMode.Tower;
+
         private double CurrentSignalQuality
         {
             get
@@ -630,7 +635,8 @@ namespace OhControl.Voice
                 byte[] audio =
                     await _elevenLabs.SynthesizeAsync(
                         response.Text,
-                        CancellationToken.None)
+                        CancellationToken.None,
+                        CurrentVoiceMode)
                     .ConfigureAwait(false);
 
                 await _audioPlayer.PlayAsync(
@@ -756,7 +762,8 @@ namespace OhControl.Voice
                     byte[] audio =
                         await _elevenLabs.SynthesizeAsync(
                             followUp.Text,
-                            cancellation.Token)
+                            cancellation.Token,
+                            AtcVoiceMode.Tower)
                         .ConfigureAwait(false);
 
                     await _audioPlayer.PlayAsync(
@@ -920,7 +927,8 @@ namespace OhControl.Voice
                 byte[] audio =
                     await _elevenLabs.SynthesizeAsync(
                         response,
-                        CancellationToken.None)
+                        CancellationToken.None,
+                        CurrentVoiceMode)
                     .ConfigureAwait(false);
 
                 await _audioPlayer.PlayAsync(
@@ -1076,7 +1084,8 @@ namespace OhControl.Voice
                         byte[] audio =
                             await _elevenLabs.SynthesizeAsync(
                                 atis.Text,
-                                token)
+                                token,
+                                AtcVoiceMode.Atis)
                             .ConfigureAwait(false);
 
                         await _audioPlayer.PlayAsync(

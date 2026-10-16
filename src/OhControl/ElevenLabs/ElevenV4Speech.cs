@@ -1,14 +1,18 @@
 using System;
 using System.Net;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 
 namespace OhControl.ElevenLabs
 {
-    // The original aviation text remains unchanged; only TTS pronunciation changes.
+    public enum AtcVoiceMode { Tower, Ground, Atis }
+
+    // Operational ATC messages remain unchanged; only synthesis is directed.
     public static class ElevenV4Speech
     {
         public const string ModelId = "eleven_v4";
         public const string DictionaryVersion = "ohcontrol-bron-fr-ipa-v1";
+        public const string VoiceDirectionVersion = "fr-atc-delivery-v1";
 
         public static JObject CreateDictionaryRequest()
         {
@@ -74,10 +78,48 @@ namespace OhControl.ElevenLabs
             }
         }
 
+        // Eleven v4 audio tags guide delivery without rewriting ATC instructions.
+        public static string PrepareSpeechText(
+            string operationalText,
+            bool hasPronunciationDictionary,
+            AtcVoiceMode mode = AtcVoiceMode.Tower)
+        {
+            if (string.IsNullOrWhiteSpace(operationalText))
+                throw new ArgumentException("Empty ATC message.");
+
+            string direction;
+            switch (mode)
+            {
+                case AtcVoiceMode.Ground:
+                    direction = "[calm, focused French ground air traffic controller, concise and natural radio delivery, steady measured pace, precise articulation] ";
+                    break;
+                case AtcVoiceMode.Atis:
+                    direction = "[neutral French aviation weather broadcast voice, clear and even pace, objective factual delivery, precise articulation] ";
+                    break;
+                default:
+                    direction = "[calm, confident French tower air traffic controller, concise and authoritative radio delivery, measured pace, crisp articulation, no dramatization] ";
+                    break;
+            }
+
+            string spokenText = operationalText;
+            // Eleven v4 supports native /IPA/, so even restricted API keys
+            // can pronounce Bron without a pronunciation dictionary.
+            if (!hasPronunciationDictionary)
+            {
+                spokenText = Regex.Replace(
+                    spokenText, @"(?<![\p{L}\p{N}])Bron(?![\p{L}\p{N}])",
+                    "/bʁɔ̃/",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            }
+
+            return direction + spokenText;
+        }
+
         public static JObject CreateSpeechRequest(
             string text,
             string voiceId,
-            JObject dictionaryLocator)
+            JObject dictionaryLocator,
+            AtcVoiceMode mode = AtcVoiceMode.Tower)
         {
             if (string.IsNullOrWhiteSpace(text) ||
                 string.IsNullOrWhiteSpace(voiceId))
@@ -89,7 +131,7 @@ namespace OhControl.ElevenLabs
             {
                 ["inputs"] = new JArray(new JObject
                 {
-                    ["text"] = text,
+                    ["text"] = PrepareSpeechText(text, dictionaryLocator != null, mode),
                     ["voice_id"] = voiceId
                 }),
                 ["model_id"] = ModelId,

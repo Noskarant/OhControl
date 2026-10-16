@@ -52,8 +52,13 @@ internal static class Program
             "ATC voice must enforce French.");
         Expect((string)payload["inputs"][0]["voice_id"] == "existing-voice",
             "Must preserve existing voice ID.");
-        Expect((string)payload["inputs"][0]["text"] == message,
-            "Pronunciation must not rewrite displayed ATC text.");
+        string towerSpeech = (string)payload["inputs"][0]["text"];
+        Expect(towerSpeech.Contains("[calm, confident French tower air traffic controller"),
+            "Tower speech must use controlled, concise ATC delivery.");
+        Expect(towerSpeech.EndsWith(message, StringComparison.Ordinal),
+            "Voice tags must preserve the ATC clearance text.");
+        Expect(!towerSpeech.Contains("/bʁɔ̃/"),
+            "Configured dictionary preserves written Bron.");
         Expect((string)payload["pronunciation_dictionary_locators"][0]
             ["pronunciation_dictionary_id"] == "dict-1",
             "Speech must reference the IPA dictionary.");
@@ -66,10 +71,45 @@ internal static class Program
             message, "existing-voice", null);
         Expect((string)fallback["model_id"] == "eleven_v4",
             "V4 remains selected when the dictionary is unavailable.");
-        Expect((string)fallback["inputs"][0]["text"] == message,
-            "Do not alter aviation text when the dictionary is missing.");
+        string fallbackSpeech = (string)fallback["inputs"][0]["text"];
+        Expect(fallbackSpeech.Contains("/bʁɔ̃/ Sol"),
+            "Inline IPA must correct Bron without dictionary-write permission.");
+        Expect(!fallbackSpeech.Contains("Bron Sol"),
+            "Never send uncorrected Bron without a dictionary.");
         Expect(fallback["pronunciation_dictionary_locators"] == null,
             "A missing dictionary must not generate a locator field.");
+
+        var ground = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
+            "F-GABC, Bron Sol, roulez au point d'attente Alpha un.",
+            "existing-voice", locator, OhControl.ElevenLabs.AtcVoiceMode.Ground);
+        Expect(((string)ground["inputs"][0]["text"]).Contains(
+            "[calm, focused French ground air traffic controller"),
+            "Ground must have an operational radio delivery.");
+        Expect(((string)ground["inputs"][0]["text"]).EndsWith(
+            "roulez au point d'attente Alpha un.", StringComparison.Ordinal),
+            "Ground clearance wording must remain unchanged.");
+
+        var atis = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
+            "Bron information Alpha, piste un six en service.",
+            "existing-voice", locator, OhControl.ElevenLabs.AtcVoiceMode.Atis);
+        Expect(((string)atis["inputs"][0]["text"]).Contains(
+            "[neutral French aviation weather broadcast voice"),
+            "ATIS must sound like neutral aeronautical information.");
+
+        string phonetic = OhControl.ElevenLabs.ElevenV4Speech.PrepareSpeechText(
+            "Bron Sol, Lebron, Bron-Tour, BRON.", false);
+        Expect(phonetic.Contains("/bʁɔ̃/ Sol") &&
+               phonetic.Contains("Lebron") &&
+               phonetic.Contains("/bʁɔ̃/-Tour") &&
+               phonetic.Contains("/bʁɔ̃/."),
+            "Inline IPA may change only whole-word Bron regardless of case.");
+        string original = "Bron Sol, QNH 1018, piste un six.";
+        string withDictionary = OhControl.ElevenLabs.ElevenV4Speech.PrepareSpeechText(
+            original, true, OhControl.ElevenLabs.AtcVoiceMode.Ground);
+        Expect(withDictionary.EndsWith(original, StringComparison.Ordinal),
+            "Dictionary mode must preserve operational text.");
+        Expect(!withDictionary.Contains("/bʁɔ̃/"),
+            "Dictionary mode must not insert inline IPA.");
 
         var forbidden = new Newtonsoft.Json.Linq.JObject
         {

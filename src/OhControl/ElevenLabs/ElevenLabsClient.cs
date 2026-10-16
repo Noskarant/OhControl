@@ -16,7 +16,7 @@ namespace OhControl.ElevenLabs
     public sealed class ElevenLabsClient : IDisposable
     {
         private const string TtsLanguageCode = "fr";
-        private const string TtsCacheVersion = "fr-radio-v4-ipa-bron-v2";
+        private const string TtsCacheVersion = "fr-radio-v4-ipa-bron-v3";
         private readonly HttpClient _httpClient = new HttpClient();
         private readonly string _cacheDirectory;
         private readonly string _pronunciationCachePath;
@@ -116,7 +116,8 @@ namespace OhControl.ElevenLabs
 
         public async Task<byte[]> SynthesizeAsync(
             string text,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            AtcVoiceMode mode = AtcVoiceMode.Tower)
         {
             EnsureConfigured();
 
@@ -133,7 +134,7 @@ namespace OhControl.ElevenLabs
             JObject pronunciation = await GetPronunciationLocatorAsync(
                 apiKey, cancellationToken).ConfigureAwait(false);
 
-            string cachePath = GetCachePath(text, pronunciation != null);
+            string cachePath = GetCachePath(text, pronunciation != null, mode);
             if (File.Exists(cachePath))
             {
                 return File.ReadAllBytes(cachePath);
@@ -143,7 +144,7 @@ namespace OhControl.ElevenLabs
                 "https://api.elevenlabs.io/v1/text-to-dialogue?output_format=mp3_44100_128";
 
             JObject body = ElevenV4Speech.CreateSpeechRequest(
-                text, voiceId, pronunciation);
+                text, voiceId, pronunciation, mode);
 
             using (var request = new HttpRequestMessage(HttpMethod.Post, url))
             {
@@ -328,15 +329,16 @@ namespace OhControl.ElevenLabs
             }
         }
 
-        private string GetCachePath(string text, bool hasDictionary)
+        private string GetCachePath(string text, bool hasDictionary, AtcVoiceMode mode)
         {
             string source =
                 _settings.ElevenLabsVoiceId +
                 "|" + ElevenV4Speech.ModelId + "|" +
                 TtsLanguageCode +
                 "|" +
-                TtsCacheVersion +
-                "|" + (hasDictionary ? "bron-ipa" : "no-dictionary") +
+                TtsCacheVersion + "|" +
+                ElevenV4Speech.VoiceDirectionVersion + "|" + mode + "|" +
+                (hasDictionary ? "bron-ipa" : "inline-ipa") +
                 "|" +
                 text;
 
