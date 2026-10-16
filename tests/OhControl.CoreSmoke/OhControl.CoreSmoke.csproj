@@ -22,6 +22,7 @@
     <Compile Include="../../src/OhControl/Radio/AviationCallsign.cs" Link="Radio/AviationCallsign.cs" />
     <Compile Include="../../src/OhControl/Radio/AviationFrenchNumbers.cs" Link="Radio/AviationFrenchNumbers.cs" />
     <Compile Include="../../src/OhControl/Radio/RadioStation.cs" Link="Radio/RadioStation.cs" />
+    <Compile Include="../../src/OhControl/Voice/PttCaptureState.cs" Link="Voice/PttCaptureState.cs" />
     <Compile Include="../../src/OhControl/TelemetrySnapshot.cs" Link="TelemetrySnapshot.cs" />
   </ItemGroup>
 </Project>

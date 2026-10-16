@@ -10,6 +10,7 @@ internal static class Program
     {
         try
         {
+            VerifyPttCaptureState();
             VerifyGroundProfile();
             VerifyIdentifierSpeech();
             VerifyFrequencySpeech();
@@ -24,6 +25,31 @@ internal static class Program
             Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    private static void VerifyPttCaptureState()
+    {
+        var capture = new OhControl.Voice.PttCaptureState();
+
+        Expect(capture.TryBeginCapture(), "Initial PTT press must start capture.");
+        Expect(!capture.TryBeginCapture(), "Duplicate PTT press must be ignored.");
+        Expect(capture.TryBeginStop(), "PTT release must begin WAV finalization.");
+        Expect(!capture.TryBeginStop(), "Duplicate PTT release must be ignored.");
+        Expect(!capture.TryBeginCapture(),
+            "PTT must not restart while the old microphone is still stopping.");
+
+        capture.CompleteStop();
+        Expect(capture.TryBeginCapture(),
+            "PTT must immediately work again after WAV finalization.");
+
+        capture.CancelCapture();
+        Expect(capture.TryBeginCapture(),
+            "Failed microphone startup must not leave PTT blocked.");
+        Expect(capture.TryBeginStop(), "PTT must still release after retry.");
+        capture.CompleteStop();
+        Expect(capture.TryBeginCapture(),
+            "Successive pilot transmissions must remain available.");
+        capture.CancelCapture();
     }
 
     private static void VerifyGroundProfile()

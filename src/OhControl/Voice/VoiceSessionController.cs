@@ -29,6 +29,9 @@ namespace OhControl.Voice
         private readonly SemaphoreSlim _transmissionGate =
             new SemaphoreSlim(1, 1);
 
+        // Do not reuse the microphone until its previous WAV is finalized.
+        private readonly PttCaptureState _pttCaptureState = new PttCaptureState();
+
         private readonly ConcurrentDictionary<
             string,
             MultiplayerPlayerState> _remoteTransmitters =
@@ -459,10 +462,9 @@ namespace OhControl.Voice
                 return;
             }
 
-            if (_transmissionGate.CurrentCount == 0)
+            if (!_pttCaptureState.TryBeginCapture())
             {
-                StatusChanged?.Invoke(
-                    "Fréquence occupée par le contrôleur — attendez la fin de la transmission.");
+                StatusChanged?.Invoke("Micro en cours d'enregistrement ou de finalisation.");
                 return;
             }
 
@@ -489,6 +491,7 @@ namespace OhControl.Voice
             }
             catch (Exception ex)
             {
+                _pttCaptureState.CancelCapture();
                 StatusChanged?.Invoke(
                     "Micro : " + ex.Message);
             }
@@ -496,43 +499,60 @@ namespace OhControl.Voice
 
         private async void OnPttReleased()
         {
-            if (!_microphone.IsRecording)
+            if (!_pttCaptureState.TryBeginStop())
             {
                 return;
             }
+
+            // Preserve this pilot message's collision state even if PTT is
+            // pressed again while its transcription is waiting in the queue.
+            bool collisionDetected = _collisionDetected;
+            _collisionDetected = false;
 
             _ = _multiplayer.BroadcastTransmissionStateAsync(
                 false,
                 CurrentFrequencyMhz);
 
             byte[] wav;
-
             try
             {
+                // Never hold the microphone open while another ATC reply plays.
                 wav = await _microphone.StopAsync()
                     .ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                StatusChanged?.Invoke(
-                    "Micro : " + ex.Message);
+                StatusChanged?.Invoke("Micro : " + ex.Message);
                 return;
             }
+            finally
+            {
+                _pttCaptureState.CompleteStop();
+            }
 
-            if (!await _transmissionGate.WaitAsync(0)
-                .ConfigureAwait(false))
+            // Do not silently lose a recorded pilot transmission when ATC
+            // already holds the gate: wait for the channel to become available.
+            if (_transmissionGate.CurrentCount == 0)
             {
                 StatusChanged?.Invoke(
-                    "Transmission non traitée : le contrôleur émettait déjà.");
+                    "Transmission enregistrée — attente de la fin du contrôleur…");
+            }
+
+            try
+            {
+                await _transmissionGate.WaitAsync()
+                    .ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Application closed while this transmission was queued.
                 return;
             }
 
             try
             {
-
-                if (_collisionDetected)
+                if (collisionDetected)
                 {
-                    _collisionDetected = false;
 
                     FeedbackGenerated?.Invoke(
                         "Double transmission : l'ATC ne considère pas le message comme reçu.");
@@ -562,9 +582,7 @@ namespace OhControl.Voice
                 if (string.IsNullOrWhiteSpace(transcript))
                 {
                     StatusChanged?.Invoke(
-                        "Aucune parole reconnue — enregistrement reçu (" +
-                        wav.Length +
-                        " octets).");
+                        "Aucune parole reconnue.");
                     return;
                 }
 
