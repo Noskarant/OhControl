@@ -23,6 +23,20 @@ namespace OhControl.Configuration
         public int PttJoystickDeviceId { get; set; } = -1;
         public int PttJoystickButtonIndex { get; set; } = -1;
 
+        // Direct host/client multiplayer: LAN or private VPN, no Supabase.
+        public bool DirectMultiplayerEnabled { get; set; }
+        public bool DirectMultiplayerIsHost { get; set; } = true;
+        public string DirectMultiplayerHostAddress { get; set; } = "127.0.0.1";
+        public int DirectMultiplayerPort { get; set; } = 47650;
+        public string DirectMultiplayerRoomCode { get; set; } = "";
+        public bool IsDirectMultiplayerConfigured =>
+            DirectMultiplayerEnabled &&
+            DirectMultiplayerPort >= 1024 &&
+            DirectMultiplayerPort <= 65535 &&
+            !string.IsNullOrWhiteSpace(DirectMultiplayerRoomCode) &&
+            (DirectMultiplayerIsHost ||
+             !string.IsNullOrWhiteSpace(DirectMultiplayerHostAddress));
+
         public bool MultiplayerEnabled { get; set; }
         public string SupabaseProjectUrl { get; set; } = "";
         public string SupabasePublishableKey { get; set; } = "";

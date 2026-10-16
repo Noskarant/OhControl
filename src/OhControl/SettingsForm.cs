@@ -30,6 +30,9 @@ namespace OhControl
         private readonly Label _joystickPtt = new Label();
 
         private readonly CheckBox _multiplayerEnabled = new CheckBox();
+        private readonly CheckBox _directHost = new CheckBox();
+        private readonly TextBox _directHostAddress = new TextBox();
+        private readonly TextBox _directPort = new TextBox();
         private readonly TextBox _supabaseUrl = new TextBox();
         private readonly TextBox _supabaseKey = new TextBox();
         private readonly TextBox _roomCode = new TextBox();
@@ -364,7 +367,7 @@ namespace OhControl
             };
 
             _multiplayerEnabled.Text =
-                "Activer quand la session partagée sera configurée";
+                "Activer la session directe sans Supabase";
 
             _multiplayerEnabled.AutoSize = true;
             _multiplayerEnabled.ForeColor =
@@ -385,7 +388,9 @@ namespace OhControl
             var note = new Label
             {
                 Text =
-                    "Pour l’instant tu peux laisser ce bloc désactivé. À la fin, toi et Kélian utiliserez le même projet et le même code de salle.",
+                    "Un seul pilote est hôte et gère tout le contrôle aérien. " +
+                    "Sur le PC invité, saisis l’adresse IP du PC hôte (réseau local ou VPN privé), " +
+                    "le même port et le même code de salle.",
                 AutoSize = true,
                 MaximumSize = new Size(820, 0),
                 ForeColor = OhControlTheme.TextSecondary,
@@ -397,8 +402,12 @@ namespace OhControl
             outer.SetColumnSpan(note, 2);
 
             var left = CreateCompactFields();
-            AddCompactField(left, 0, "Projet Supabase", _supabaseUrl);
-            AddCompactField(left, 1, "Clé publishable", _supabaseKey);
+            _directHost.Text = "Ce PC est l’hôte ATC";
+            _directHost.AutoSize = true;
+            _directHost.CheckedChanged +=
+                (_, __) => RefreshMultiplayerEnabledState();
+            left.Controls.Add(_directHost, 1, 0);
+            AddCompactField(left, 1, "IP de l’hôte (invité)", _directHostAddress);
 
             var right = CreateCompactFields();
 
@@ -433,23 +442,8 @@ namespace OhControl
 
             roomPanel.Controls.Add(generateRoom);
 
-            AddCompactCustomField(
-                right,
-                0,
-                "Code de salle",
-                roomPanel);
-
-            var safety = new Label
-            {
-                Text = "Utilise uniquement une clé publishable, jamais une clé secrète/service-role.",
-                AutoSize = true,
-                MaximumSize = new Size(360, 0),
-                ForeColor = OhControlTheme.Warning,
-                Font = OhControlTheme.Font(8.3f),
-                Margin = new Padding(0, 12, 0, 0)
-            };
-
-            right.Controls.Add(safety, 1, 1);
+            AddCompactCustomField(right, 0, "Code commun", roomPanel);
+            AddCompactField(right, 1, "Port TCP (identique)", _directPort);
 
             outer.Controls.Add(left, 0, 2);
             outer.Controls.Add(right, 1, 2);
@@ -487,18 +481,12 @@ namespace OhControl
                     : "Aucun";
 
             _multiplayerEnabled.Checked =
-                _settings.MultiplayerEnabled;
-
-            _supabaseUrl.Text =
-                _settings.SupabaseProjectUrl;
-
-            _supabaseKey.Text =
-                _settings.SupabasePublishableKey;
-
-            _supabaseKey.UseSystemPasswordChar = true;
-
-            _roomCode.Text =
-                _settings.MultiplayerRoomCode;
+                _settings.DirectMultiplayerEnabled;
+            _directHost.Checked = _settings.DirectMultiplayerIsHost;
+            _directHostAddress.Text =
+                _settings.DirectMultiplayerHostAddress;
+            _directPort.Text = _settings.DirectMultiplayerPort.ToString();
+            _roomCode.Text = _settings.DirectMultiplayerRoomCode;
 
             _atcVolume.Value =
                 Math.Max(
@@ -519,8 +507,8 @@ namespace OhControl
                 _elevenVoice,
                 _elevenGroundVoice,
                 _elevenAtisVoice,
-                _supabaseUrl,
-                _supabaseKey,
+                _directHostAddress,
+                _directPort,
                 _roomCode
             })
             {
@@ -952,8 +940,9 @@ namespace OhControl
             bool enabled =
                 _multiplayerEnabled.Checked;
 
-            _supabaseUrl.Enabled = enabled;
-            _supabaseKey.Enabled = enabled;
+            _directHost.Enabled = enabled;
+            _directHostAddress.Enabled = enabled && !_directHost.Checked;
+            _directPort.Enabled = enabled;
             _roomCode.Enabled = enabled;
         }
 
@@ -1095,17 +1084,22 @@ namespace OhControl
             _settings.PttJoystickButtonIndex =
                 _capturedJoystickButtonIndex;
 
-            _settings.MultiplayerEnabled =
+            _settings.DirectMultiplayerEnabled =
                 _multiplayerEnabled.Checked;
-
-            _settings.SupabaseProjectUrl =
-                _supabaseUrl.Text.Trim();
-
-            _settings.SupabasePublishableKey =
-                _supabaseKey.Text.Trim();
-
-            _settings.MultiplayerRoomCode =
+            _settings.DirectMultiplayerIsHost = _directHost.Checked;
+            _settings.DirectMultiplayerHostAddress =
+                _directHostAddress.Text.Trim();
+            if (!int.TryParse(_directPort.Text.Trim(), out int directPort) ||
+                directPort < 1024 || directPort > 65535)
+            {
+                MessageBox.Show("Port TCP invalide (1024 à 65535).");
+                return;
+            }
+            _settings.DirectMultiplayerPort = directPort;
+            _settings.DirectMultiplayerRoomCode =
                 _roomCode.Text.Trim();
+            // Legacy Supabase configuration is preserved but not used
+            // in this direct session mode.
 
             _settings.Save();
 
