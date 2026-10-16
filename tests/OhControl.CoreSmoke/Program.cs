@@ -929,14 +929,24 @@ internal static class Program
         AtcResponse frequencyRelease =
             handoffEngine.Handle(
                 tower,
-                "F-GABC quitte la fréquence",
+                "F-GABC unité deux unité décimale sept zéro cinq au revoir",
                 "F-GABC",
                 telemetry);
 
         ExpectContains(
             frequencyRelease.Text,
             "au revoir",
-            "Frequency release should end with au revoir.");
+            "Tower handoff must close after the correct frequency readback.");
+
+        AtcResponse afterwards =
+            handoffEngine.Handle(
+                tower,
+                "F-GABC quitte la fréquence",
+                "F-GABC",
+                telemetry);
+
+        Expect(string.IsNullOrWhiteSpace(afterwards.Text),
+            "After a completed handoff Tower must not restart the conversation.");
 
     }
 
