@@ -71,17 +71,33 @@ internal static class Program
         Expect(fallback["pronunciation_dictionary_locators"] == null,
             "A missing dictionary must not generate a locator field.");
 
-        string forbidden = "{\\"detail\\":{\\"type\\":\\"authentication_error\\"," +
-            "\\"code\\":\\"unauthorized\\",\\"status\\":\\"missing_permissions\\"," +
-            "\\"message\\":\\"The API key is missing the permission pronunciation_dictionaries_write to execute this operation.\\"}}";
+        var forbidden = new Newtonsoft.Json.Linq.JObject
+        {
+            ["detail"] = new Newtonsoft.Json.Linq.JObject
+            {
+                ["type"] = "authentication_error",
+                ["code"] = "unauthorized",
+                ["status"] = "missing_permissions",
+                ["message"] = "The API key is missing the permission pronunciation_dictionaries_write to execute this operation."
+            }
+        }.ToString(Newtonsoft.Json.Formatting.None);
+
+        var unrelatedPermission = new Newtonsoft.Json.Linq.JObject
+        {
+            ["detail"] = new Newtonsoft.Json.Linq.JObject
+            {
+                ["status"] = "missing_permissions",
+                ["message"] = "Missing text_to_speech"
+            }
+        }.ToString(Newtonsoft.Json.Formatting.None);
+
         Expect(
             OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
                 System.Net.HttpStatusCode.Unauthorized, forbidden),
             "Recognize the exact missing dictionary-write permission.");
         Expect(
             !OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
-                System.Net.HttpStatusCode.Unauthorized,
-                "{\\"detail\\":{\\"status\\":\\"missing_permissions\\",\\"message\\":\\"Missing text_to_speech\\"}}"),
+                System.Net.HttpStatusCode.Unauthorized, unrelatedPermission),
             "Do not hide other missing API permissions.");
         Expect(
             !OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
