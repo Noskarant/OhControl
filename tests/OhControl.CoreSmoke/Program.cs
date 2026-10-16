@@ -19,6 +19,7 @@ internal static class Program
             VerifyReportingPoints();
             VerifyAtcFlow();
             VerifyLineupReadbackVariationsAndPhysicalAlignment();
+            VerifyCrossFrequencyRunwaySeparation();
             VerifyFrequencyTransferReadbackLifecycle();
             VerifyAtisCorrectionAndReadbackErrors();
             VerifyShortCallsignReadbacks();
@@ -782,6 +783,49 @@ internal static class Program
             "F-GABC", telemetry);
         ExpectContains(collision.Text, "Fox Golf Alpha Bravo Charlie",
             "Do not shorten ATC callsigns when another pilot has the same suffix.");
+    }
+
+    private static void VerifyCrossFrequencyRunwaySeparation()
+    {
+        var tower = new RadioStation(
+            RadioStationKind.Tower, "Bron Tour", 118.100);
+        var telemetry = new TelemetrySnapshot
+        {
+            IsOnGround = true,
+            LatitudeDeg = 45.729,
+            LongitudeDeg = 4.9436,
+            HeadingMagneticDeg = 163.39,
+            WindDirectionTrueDeg = 160,
+            WindSpeedKt = 4,
+            SeaLevelPressureMb = 1018
+        };
+        var engine = new AtcEngine(new AtisService());
+        engine.Handle(tower,
+            "Bron Tour F-GABC au point d'attente A1 prêt",
+            "F-GABC", telemetry);
+        engine.Handle(tower,
+            "F-GABC on s'aligne et on attend",
+            "F-GABC", telemetry);
+        engine.UpdateTraffic(new[] {
+            new OhControl.Multiplayer.MultiplayerPlayerState
+            {
+                Callsign = "F-HXYZ",
+                Com1ActiveMhz = 121.705, // OTHER pilot is on Ground.
+                ActiveRunway = "16",
+                CircuitPhase = "Runway",
+                DistanceToThresholdMeters = 400
+            }
+        });
+        var now = new DateTimeOffset(2026,10,16,12,0,0,TimeSpan.Zero);
+        engine.ObserveAlignedForTakeoff("F-GABC",tower,telemetry,now);
+        Expect(engine.ObserveAlignedForTakeoff("F-GABC",
+            tower,telemetry,now.AddSeconds(6)) == null,
+            "Do not clear runway occupied by another aircraft on Ground.");
+        engine.UpdateTraffic(Array.Empty<OhControl.Multiplayer.MultiplayerPlayerState>());
+        ExpectContains(engine.ObserveAlignedForTakeoff(
+            "F-GABC",tower,telemetry,now.AddSeconds(6.5))?.Text,
+            "autorisé décollage",
+            "Once traffic clears, tower can authorize takeoff.");
     }
 
     private static void VerifyLineupReadbackVariationsAndPhysicalAlignment()

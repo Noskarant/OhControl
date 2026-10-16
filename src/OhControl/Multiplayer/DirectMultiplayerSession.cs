@@ -195,7 +195,11 @@ namespace OhControl.Multiplayer
                         }
                     }
                     if (candidate == null) continue;
-                    AcceptIdentity(hello["identity"] as JObject);
+                    if (!AcceptIdentity(hello["identity"] as JObject))
+                    {
+                        candidate.Close();
+                        continue;
+                    }
                     await SendAsync(new JObject
                     {
                         ["type"] = "welcome",
@@ -277,8 +281,10 @@ namespace OhControl.Multiplayer
             string type = (string)packet["type"];
             if (type == "welcome")
             {
-                AcceptIdentity(packet["identity"] as JObject);
-                StatusChanged?.Invoke("Connecté à l'hôte : ATC partagé actif.");
+                if (AcceptIdentity(packet["identity"] as JObject))
+                    StatusChanged?.Invoke("Connecté à l'hôte : ATC partagé actif.");
+                else
+                    StatusChanged?.Invoke("Session refusée : indicatif ou identité en conflit.");
                 return;
             }
 
@@ -343,9 +349,9 @@ namespace OhControl.Multiplayer
             }
         }
 
-        private void AcceptIdentity(JObject identity)
+        private bool AcceptIdentity(JObject identity)
         {
-            if (identity == null) return;
+            if (identity == null) return false;
             var player = new MultiplayerPlayerState
             {
                 PlayerId = (string)identity["playerId"],
@@ -361,10 +367,11 @@ namespace OhControl.Multiplayer
             {
                 StatusChanged?.Invoke(
                     "Identifiant ou indicatif identique : configurez deux pilotes distincts.");
-                return;
+                return false;
             }
             lock (_peerGate) _remote = player;
             RaisePlayers();
+            return true;
         }
 
         private void RaisePlayers() =>

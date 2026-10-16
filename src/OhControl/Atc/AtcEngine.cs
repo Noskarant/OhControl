@@ -1946,10 +1946,8 @@ namespace OhControl.Atc
                         !string.IsNullOrWhiteSpace(p.Callsign) &&
                         !string.Equals(p.Callsign, _handlingCallsign,
                             StringComparison.OrdinalIgnoreCase) &&
-                        Math.Abs(
-                            p.Com1ActiveMhz -
-                            frequencyMhz) <=
-                        0.006 &&
+                        // Aircraft on the runway or in final remain
+                        // traffic even when tuned to Ground/another frequency.
                         (string.IsNullOrWhiteSpace(
                              p.ActiveRunway) ||
                          p.ActiveRunway ==
