@@ -12,7 +12,7 @@ namespace OhControl.ElevenLabs
     {
         public const string ModelId = "eleven_v4";
         public const string DictionaryVersion = "ohcontrol-bron-fr-ipa-v1";
-        public const string VoiceDirectionVersion = "fr-atc-shared-delivery-v2";
+        public const string VoiceDirectionVersion = "fr-atc-single-speaker-v3";
 
         public static JObject CreateDictionaryRequest()
         {
@@ -87,13 +87,9 @@ namespace OhControl.ElevenLabs
             if (string.IsNullOrWhiteSpace(operationalText))
                 throw new ArgumentException("Empty ATC message.");
 
-            // Same intonation, pacing and articulation for Tower, Ground and
-            // ATIS. The only role-dependent parameter is the selected voice ID.
-            const string direction =
-                "[calm, focused French air traffic controller, concise and natural " +
-                "VHF radio delivery, steady measured pace, clear precise articulation, " +
-                "neutral professional tone, no dramatization] ";
-
+            // Do not prepend lengthy audio tags. A generative model can
+            // repeat callsigns or elaborate when prompted with such tags.
+            // Consistent delivery is controlled by the shared voice settings.
             string spokenText = operationalText;
             // Eleven v4 supports native /IPA/, so even restricted API keys
             // can pronounce Bron without a pronunciation dictionary.
@@ -105,7 +101,7 @@ namespace OhControl.ElevenLabs
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             }
 
-            return direction + spokenText;
+            return spokenText;
         }
 
         public static string SelectVoiceId(
@@ -132,6 +128,39 @@ namespace OhControl.ElevenLabs
             }
         }
 
+        // One controller message has one speaker. Prefer Eleven v4 Text-to-
+        // Speech rather than Text-to-Dialogue, which is for multi-turn scenes.
+        public static string CreateSpeechUrl(string voiceId)
+        {
+            if (string.IsNullOrWhiteSpace(voiceId))
+                throw new ArgumentException("Voice ID manquant.");
+
+            return "https://api.elevenlabs.io/v1/text-to-speech/" +
+                Uri.EscapeDataString(voiceId.Trim()) +
+                "?output_format=mp3_44100_128";
+        }
+
+        // Conservative sanity check to catch a model repeating a short
+        // callsign for tens of seconds. Longer ATIS bulletins get a
+        // proportionally longer budget. This does not inspect speech content.
+        public static double MaxAudioDurationSeconds(string operationalText)
+        {
+            if (string.IsNullOrWhiteSpace(operationalText))
+                throw new ArgumentException("Texte radio vide.");
+
+            int words = Regex.Matches(operationalText, @"[\p{L}\p{N}]+").Count;
+            return Math.Max(20.0, Math.Min(150.0, words * 1.35 + 12.0));
+        }
+
+        public static bool IsAudioDurationPlausible(
+            string operationalText, double seconds)
+        {
+            return !double.IsNaN(seconds) &&
+                !double.IsInfinity(seconds) &&
+                seconds >= 0.2 &&
+                seconds <= MaxAudioDurationSeconds(operationalText);
+        }
+
         public static JObject CreateSpeechRequest(
             string text,
             string voiceId,
@@ -140,19 +169,19 @@ namespace OhControl.ElevenLabs
         {
             if (string.IsNullOrWhiteSpace(text) ||
                 string.IsNullOrWhiteSpace(voiceId))
-            {
                 throw new ArgumentException("Missing Eleven v4 synthesis parameters.");
-            }
 
             var body = new JObject
             {
-                ["inputs"] = new JArray(new JObject
-                {
-                    ["text"] = PrepareSpeechText(text, dictionaryLocator != null, mode),
-                    ["voice_id"] = voiceId
-                }),
+                ["text"] = PrepareSpeechText(text, dictionaryLocator != null, mode),
                 ["model_id"] = ModelId,
-                ["language_code"] = "fr"
+                ["language_code"] = "fr",
+                // Exactly the same tuning for Tour, Sol and ATIS.
+                ["voice_settings"] = new JObject
+                {
+                    ["stability"] = 0.85,
+                    ["similarity_boost"] = 0.85
+                }
             };
 
             if (dictionaryLocator != null)

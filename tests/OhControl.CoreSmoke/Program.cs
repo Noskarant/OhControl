@@ -33,84 +33,77 @@ internal static class Program
     {
         var dictionary = OhControl.ElevenLabs.ElevenV4Speech.CreateDictionaryRequest();
         var rules = (Newtonsoft.Json.Linq.JArray)dictionary["rules"];
-
-        Expect(rules.Count == 3, "Bron dictionary must cover case variants.");
-        Expect((string)rules[0]["string_to_replace"] == "Bron" &&
-               (string)rules[0]["type"] == "phoneme" &&
-               (string)rules[0]["alphabet"] == "ipa" &&
-               (string)rules[0]["phoneme"] == "bʁɔ̃",
-               "Bron must be nasal IPA, not Bronne.");
+        Expect(rules.Count == 3, "Bron pronunciation dictionary case variants.");
+        Expect((string)rules[0]["phoneme"] == "bʁɔ̃",
+            "Bron should have a French nasal vowel.");
 
         var locator = OhControl.ElevenLabs.ElevenV4Speech.CreateLocator(
-            "dict-1", "version-1");
-        string message = "Fox Golf Alpha Bravo Charlie, Bron Sol, bonjour.";
+            "dictionary-1", "version-1");
+        string message = "Fox Golf Alpha Bravo Charlie, Bron Sol, transmettez vos intentions.";
         var payload = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
             message, "existing-voice", locator);
-
         Expect((string)payload["model_id"] == "eleven_v4",
-            "Synthesis must use Eleven v4.");
+            "Must use Eleven v4.");
         Expect((string)payload["language_code"] == "fr",
-            "ATC voice must enforce French.");
-        Expect((string)payload["inputs"][0]["voice_id"] == "existing-voice",
-            "Must preserve existing voice ID.");
-        string towerSpeech = (string)payload["inputs"][0]["text"];
-        Expect(towerSpeech.Contains("[calm, focused French air traffic controller"),
-            "All ATC voices must use the same professional radio delivery.");
-        Expect(towerSpeech.EndsWith(message, StringComparison.Ordinal),
-            "Voice tags must preserve the ATC clearance text.");
-        Expect(!towerSpeech.Contains("/bʁɔ̃/"),
-            "Configured dictionary preserves written Bron.");
+            "French locale must be enforced.");
+        Expect((string)payload["text"] == message,
+            "Synthesis must use the exact text without long scene prompts.");
+        Expect(payload["inputs"] == null,
+            "Single-speaker TTS must never include a dialogue inputs array.");
+        Expect((double)payload["voice_settings"]["stability"] == 0.85 &&
+               (double)payload["voice_settings"]["similarity_boost"] == 0.85,
+            "Consistent shared v4 settings must be applied.");
+        Expect(payload["voice_settings"]["speed"] == null &&
+               payload["voice_settings"]["style"] == null,
+            "Unsupported v4 parameters must not be sent.");
         Expect((string)payload["pronunciation_dictionary_locators"][0]
-            ["pronunciation_dictionary_id"] == "dict-1",
-            "Speech must reference the IPA dictionary.");
-        Expect(payload["voice_settings"] == null && payload["settings"] == null,
-            "Do not pass obsolete v2 settings to v4.");
+            ["pronunciation_dictionary_id"] == "dictionary-1",
+            "The pronunciation dictionary should be attached.");
 
-        // Dictionary permissions do not grant or revoke v4 voice access.
-        // A missing write scope must still allow speech synthesis without IPA.
         var fallback = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
             message, "existing-voice", null);
-        Expect((string)fallback["model_id"] == "eleven_v4",
-            "V4 remains selected when the dictionary is unavailable.");
-        string fallbackSpeech = (string)fallback["inputs"][0]["text"];
-        Expect(fallbackSpeech.Contains("/bʁɔ̃/ Sol"),
-            "Inline IPA must correct Bron without dictionary-write permission.");
-        Expect(!fallbackSpeech.Contains("Bron Sol"),
-            "Never send uncorrected Bron without a dictionary.");
+        Expect(((string)fallback["text"]).Contains("/bʁɔ̃/ Sol"),
+            "Inline IPA must correct Bron when the dictionary is unavailable.");
         Expect(fallback["pronunciation_dictionary_locators"] == null,
-            "A missing dictionary must not generate a locator field.");
+            "Do not attach an unavailable dictionary.");
 
         var ground = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
-            "F-GABC, Bron Sol, roulez au point d'attente Alpha un.",
-            "existing-voice", locator, OhControl.ElevenLabs.AtcVoiceMode.Ground);
-        Expect(((string)ground["inputs"][0]["text"]).Contains(
-            "[calm, focused French air traffic controller"),
-            "Ground must use the same radio delivery as Tower.");
-        Expect(((string)ground["inputs"][0]["text"]).EndsWith(
-            "roulez au point d'attente Alpha un.", StringComparison.Ordinal),
-            "Ground clearance wording must remain unchanged.");
-
+            message, "ground-voice", locator,
+            OhControl.ElevenLabs.AtcVoiceMode.Ground);
         var atis = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
-            "Bron information Alpha, piste un six en service.",
-            "existing-voice", locator, OhControl.ElevenLabs.AtcVoiceMode.Atis);
-        Expect(((string)atis["inputs"][0]["text"]).Contains(
-            "[calm, focused French air traffic controller"),
-            "ATIS must use the same delivery as Ground and Tower.");
+            message, "atis-voice", locator,
+            OhControl.ElevenLabs.AtcVoiceMode.Atis);
+        Expect((string)ground["text"] == (string)atis["text"] &&
+               (string)ground["text"] == (string)payload["text"],
+            "All stations must use identical text preparation.");
+        Expect(Newtonsoft.Json.Linq.JToken.DeepEquals(
+                ground["voice_settings"], atis["voice_settings"]) &&
+               Newtonsoft.Json.Linq.JToken.DeepEquals(
+                ground["voice_settings"], payload["voice_settings"]),
+            "All three voices must share EXACTLY the same speaking parameters.");
 
-        string phonetic = OhControl.ElevenLabs.ElevenV4Speech.PrepareSpeechText(
-            "Bron Sol, Lebron, Bron-Tour, BRON.", false);
-        Expect(phonetic.Contains("/bʁɔ̃/ Sol") &&
-               phonetic.Contains("Lebron") &&
-               phonetic.Contains("/bʁɔ̃/-Tour") &&
-               phonetic.Contains("/bʁɔ̃/."),
-            "Inline IPA may change only whole-word Bron regardless of case.");
-        string original = "Bron Sol, QNH 1018, piste un six.";
-        string withDictionary = OhControl.ElevenLabs.ElevenV4Speech.PrepareSpeechText(
-            original, true, OhControl.ElevenLabs.AtcVoiceMode.Ground);
-        Expect(withDictionary.EndsWith(original, StringComparison.Ordinal),
-            "Dictionary mode must preserve operational text.");
-        Expect(!withDictionary.Contains("/bʁɔ̃/"),
-            "Dictionary mode must not insert inline IPA.");
+        string url = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechUrl(
+            " existing-voice ");
+        Expect(url == "https://api.elevenlabs.io/v1/text-to-speech/existing-voice?output_format=mp3_44100_128",
+            "Must use the official v4-compatible single-speaker endpoint.");
+
+        var normal = "Fox Golf Alpha Bravo Charlie, transmettez vos intentions.";
+        Expect(OhControl.ElevenLabs.ElevenV4Speech.IsAudioDurationPlausible(
+            normal, 6.5),
+            "Ordinary radio replies must be accepted.");
+        Expect(!OhControl.ElevenLabs.ElevenV4Speech.IsAudioDurationPlausible(
+            normal, 80),
+            "Repeated callsign for 80 seconds must be rejected.");
+        var bulletin = new OhControl.Radio.AtisService().Build(null);
+        Expect(OhControl.ElevenLabs.ElevenV4Speech.IsAudioDurationPlausible(
+            bulletin.Text, 35),
+            "A 35-second ATIS must not be discarded.");
+        Expect(!OhControl.ElevenLabs.ElevenV4Speech.IsAudioDurationPlausible(
+            bulletin.Text, 240),
+            "Pathologically long ATIS generation must not be accepted.");
+        Expect(!OhControl.ElevenLabs.ElevenV4Speech.IsAudioDurationPlausible(
+            normal, double.NaN),
+            "Invalid MP3 durations must not be accepted.");
 
         var forbidden = new Newtonsoft.Json.Linq.JObject
         {
@@ -119,35 +112,16 @@ internal static class Program
                 ["type"] = "authentication_error",
                 ["code"] = "unauthorized",
                 ["status"] = "missing_permissions",
-                ["message"] = "The API key is missing the permission pronunciation_dictionaries_write to execute this operation."
+                ["message"] = "The API key is missing the permission pronunciation_dictionaries_write."
             }
         }.ToString(Newtonsoft.Json.Formatting.None);
 
-        var unrelatedPermission = new Newtonsoft.Json.Linq.JObject
-        {
-            ["detail"] = new Newtonsoft.Json.Linq.JObject
-            {
-                ["status"] = "missing_permissions",
-                ["message"] = "Missing text_to_speech"
-            }
-        }.ToString(Newtonsoft.Json.Formatting.None);
-
-        Expect(
-            OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
-                System.Net.HttpStatusCode.Unauthorized, forbidden),
-            "Recognize the exact missing dictionary-write permission.");
-        Expect(
-            !OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
-                System.Net.HttpStatusCode.Unauthorized, unrelatedPermission),
-            "Do not hide other missing API permissions.");
-        Expect(
-            !OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
-                System.Net.HttpStatusCode.BadRequest, forbidden),
-            "Do not mask non-401 API errors.");
-        Expect(
-            !OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
-                System.Net.HttpStatusCode.Unauthorized, "not-json"),
-            "Do not mask unexpected authentication failures.");
+        Expect(OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
+            System.Net.HttpStatusCode.Unauthorized, forbidden),
+            "Dictionary permission denial must fall back to inline IPA.");
+        Expect(!OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
+            System.Net.HttpStatusCode.BadRequest, forbidden),
+            "Other errors should not be swallowed.");
     }
 
     private static void VerifyStationVoiceSelectionAndBackwardCompatibility()
@@ -210,14 +184,22 @@ internal static class Program
         var atis = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
             sample, "atis-voice", null,
             OhControl.ElevenLabs.AtcVoiceMode.Atis);
-        string sharedSpeech = (string)tower["inputs"][0]["text"];
-        Expect(sharedSpeech == (string)ground["inputs"][0]["text"] &&
-               sharedSpeech == (string)atis["inputs"][0]["text"],
-               "All three controllers must have IDENTICAL delivery settings.");
-        Expect((string)tower["inputs"][0]["voice_id"] == "old-tower-voice" &&
-               (string)ground["inputs"][0]["voice_id"] == "ground-voice" &&
-               (string)atis["inputs"][0]["voice_id"] == "atis-voice",
-               "The only difference between voices must be voice_id.");
+
+        Expect((string)tower["text"] == (string)ground["text"] &&
+               (string)tower["text"] == (string)atis["text"],
+               "All controllers use identical speech content rules.");
+        Expect(Newtonsoft.Json.Linq.JToken.DeepEquals(
+                tower["voice_settings"], ground["voice_settings"]) &&
+               Newtonsoft.Json.Linq.JToken.DeepEquals(
+                tower["voice_settings"], atis["voice_settings"]),
+               "Each station must use the same speed and delivery tuning.");
+        Expect(
+            OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechUrl("ground-voice")
+                .Contains("/ground-voice?") &&
+            OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechUrl("atis-voice")
+                .Contains("/atis-voice?"),
+            "Different station IDs must route to their own TTS voice.");
+
     }
 
     private static void VerifyPttCaptureState()

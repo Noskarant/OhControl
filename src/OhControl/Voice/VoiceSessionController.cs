@@ -1051,6 +1051,7 @@ namespace OhControl.Voice
             Task.Run(async () =>
             {
                 string lastText = null;
+                int consecutiveErrors = 0;
 
                 while (!token.IsCancellationRequested)
                 {
@@ -1104,6 +1105,7 @@ namespace OhControl.Voice
                             CurrentSignalQuality)
                             .ConfigureAwait(false);
 
+                        consecutiveErrors = 0;
                         await Task.Delay(1200, token)
                             .ConfigureAwait(false);
                     }
@@ -1113,12 +1115,17 @@ namespace OhControl.Voice
                     }
                     catch (Exception ex)
                     {
+                        consecutiveErrors++;
+                        int delaySeconds =
+                            Math.Min(30, 2 * (1 << Math.Min(consecutiveErrors - 1, 4)));
+
                         StatusChanged?.Invoke(
-                            "ATIS : " + ex.Message);
+                            "ATIS : " + ex.Message +
+                            " · nouvel essai dans " + delaySeconds + " s.");
 
                         try
                         {
-                            await Task.Delay(2000, token)
+                            await Task.Delay(delaySeconds * 1000, token)
                                 .ConfigureAwait(false);
                         }
                         catch (OperationCanceledException)

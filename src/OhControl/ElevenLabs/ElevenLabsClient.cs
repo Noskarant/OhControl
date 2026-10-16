@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using NAudio.Wave;
 using Newtonsoft.Json.Linq;
 using OhControl.Configuration;
 
@@ -16,7 +17,7 @@ namespace OhControl.ElevenLabs
     public sealed class ElevenLabsClient : IDisposable
     {
         private const string TtsLanguageCode = "fr";
-        private const string TtsCacheVersion = "fr-radio-v4-ipa-bron-v3";
+        private const string TtsCacheVersion = "fr-radio-v4-single-speaker-v4";
         private readonly HttpClient _httpClient = new HttpClient();
         private readonly string _cacheDirectory;
         private readonly string _pronunciationCachePath;
@@ -141,48 +142,111 @@ namespace OhControl.ElevenLabs
             string cachePath = GetCachePath(text, pronunciation != null, mode, voiceId);
             if (File.Exists(cachePath))
             {
-                return File.ReadAllBytes(cachePath);
+                try
+                {
+                    byte[] cached = File.ReadAllBytes(cachePath);
+                    if (AudioLooksValid(cached, text))
+                        return cached;
+                }
+                catch (IOException)
+                {
+                    // Corrupted/inaccessible cache: regenerate.
+                }
+                catch (InvalidDataException)
+                {
+                    // Invalid MP3 frame: regenerate.
+                }
+
+                try { File.Delete(cachePath); }
+                catch (IOException) { /* Fresh response can still be returned. */ }
+                catch (UnauthorizedAccessException) { /* Best effort. */ }
             }
 
-            const string url =
-                "https://api.elevenlabs.io/v1/text-to-dialogue?output_format=mp3_44100_128";
-
+            string url = ElevenV4Speech.CreateSpeechUrl(voiceId);
             JObject body = ElevenV4Speech.CreateSpeechRequest(
                 text, voiceId, pronunciation, mode);
 
-            using (var request = new HttpRequestMessage(HttpMethod.Post, url))
+            // A v4 generation that repeats the callsign many times must not
+            // be cached and played indefinitely. Retry once with a fresh sample.
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                request.Headers.Add("xi-api-key", apiKey);
-                request.Content = new StringContent(
-                    body.ToString(Formatting.None),
-                    Encoding.UTF8,
-                    "application/json");
+                cancellationToken.ThrowIfCancellationRequested();
 
-                using (HttpResponseMessage response =
-                    await _httpClient.SendAsync(request, cancellationToken)
-                        .ConfigureAwait(false))
+                using (var request = new HttpRequestMessage(HttpMethod.Post, url))
                 {
-                    byte[] bytes = await response.Content.ReadAsByteArrayAsync()
-                        .ConfigureAwait(false);
+                    request.Headers.Add("xi-api-key", apiKey);
+                    request.Content = new StringContent(
+                        body.ToString(Formatting.None),
+                        Encoding.UTF8, "application/json");
 
-                    if (!response.IsSuccessStatusCode)
+                    using (HttpResponseMessage response =
+                        await _httpClient.SendAsync(request, cancellationToken)
+                            .ConfigureAwait(false))
                     {
-                        string error = Encoding.UTF8.GetString(bytes);
-                        throw new InvalidOperationException(
-                            "ElevenLabs v4 TTS " + (int)response.StatusCode + ": " + error);
-                    }
+                        byte[] bytes = await response.Content.ReadAsByteArrayAsync()
+                            .ConfigureAwait(false);
 
-                    try
-                    {
-                        File.WriteAllBytes(cachePath, bytes);
-                    }
-                    catch
-                    {
-                        // Cache failure must never break radio playback.
-                    }
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            string error = Encoding.UTF8.GetString(bytes);
+                            throw new InvalidOperationException(
+                                "ElevenLabs v4 " + (int)response.StatusCode +
+                                " (voix " + mode + ") : " + error);
+                        }
 
-                    return bytes;
+                        if (!AudioLooksValid(bytes, text))
+                        {
+                            if (attempt == 0)
+                                continue;
+
+                            throw new InvalidOperationException(
+                                "Eleven v4 a produit un audio invalide ou anormalement " +
+                                "long. Aucun son incorrect n'a été mis en cache. " +
+                                "Essaie une autre voix si cela persiste.");
+                        }
+
+                        try
+                        {
+                            File.WriteAllBytes(cachePath, bytes);
+                        }
+                        catch (IOException)
+                        {
+                            // Cache failure must not break the radio.
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            // Cache failure must not break the radio.
+                        }
+
+                        return bytes;
+                    }
                 }
+            }
+
+            throw new InvalidOperationException("Synthèse Eleven v4 échouée.");
+        }
+
+        private static bool AudioLooksValid(byte[] mp3Bytes, string originalText)
+        {
+            if (mp3Bytes == null || mp3Bytes.Length < 200)
+                return false;
+
+            try
+            {
+                using (var stream = new MemoryStream(mp3Bytes, false))
+                using (var reader = new Mp3FileReader(stream))
+                {
+                    return ElevenV4Speech.IsAudioDurationPlausible(
+                        originalText, reader.TotalTime.TotalSeconds);
+                }
+            }
+            catch (InvalidDataException)
+            {
+                return false;
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
             }
         }
 
