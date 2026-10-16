@@ -59,6 +59,38 @@ internal static class Program
             "Speech must reference the IPA dictionary.");
         Expect(payload["voice_settings"] == null && payload["settings"] == null,
             "Do not pass obsolete v2 settings to v4.");
+
+        // Dictionary permissions do not grant or revoke v4 voice access.
+        // A missing write scope must still allow speech synthesis without IPA.
+        var fallback = OhControl.ElevenLabs.ElevenV4Speech.CreateSpeechRequest(
+            message, "existing-voice", null);
+        Expect((string)fallback["model_id"] == "eleven_v4",
+            "V4 remains selected when the dictionary is unavailable.");
+        Expect((string)fallback["inputs"][0]["text"] == message,
+            "Do not alter aviation text when the dictionary is missing.");
+        Expect(fallback["pronunciation_dictionary_locators"] == null,
+            "A missing dictionary must not generate a locator field.");
+
+        string forbidden = "{\\"detail\\":{\\"type\\":\\"authentication_error\\"," +
+            "\\"code\\":\\"unauthorized\\",\\"status\\":\\"missing_permissions\\"," +
+            "\\"message\\":\\"The API key is missing the permission pronunciation_dictionaries_write to execute this operation.\\"}}";
+        Expect(
+            OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
+                System.Net.HttpStatusCode.Unauthorized, forbidden),
+            "Recognize the exact missing dictionary-write permission.");
+        Expect(
+            !OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
+                System.Net.HttpStatusCode.Unauthorized,
+                "{\\"detail\\":{\\"status\\":\\"missing_permissions\\",\\"message\\":\\"Missing text_to_speech\\"}}"),
+            "Do not hide other missing API permissions.");
+        Expect(
+            !OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
+                System.Net.HttpStatusCode.BadRequest, forbidden),
+            "Do not mask non-401 API errors.");
+        Expect(
+            !OhControl.ElevenLabs.ElevenV4Speech.IsDictionaryWritePermissionMissing(
+                System.Net.HttpStatusCode.Unauthorized, "not-json"),
+            "Do not mask unexpected authentication failures.");
     }
 
     private static void VerifyPttCaptureState()

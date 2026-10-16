@@ -85,6 +85,7 @@ namespace OhControl.Voice
             _atcEngine = new AtcEngine(_atisService);
             _phaseDetector = new LflyFlightPhaseDetector();
             _elevenLabs = new ElevenLabsClient(_settings);
+            _elevenLabs.Warning += warning => StatusChanged?.Invoke(warning);
             _multiplayer = new MultiplayerSession(_settings);
 
             _pushToTalk.Pressed += OnPttPressed;

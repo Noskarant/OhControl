@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using Newtonsoft.Json.Linq;
 
 namespace OhControl.ElevenLabs
@@ -46,19 +47,45 @@ namespace OhControl.ElevenLabs
             };
         }
 
+        public static bool IsDictionaryWritePermissionMissing(
+            HttpStatusCode statusCode,
+            string responseBody)
+        {
+            if (statusCode != HttpStatusCode.Unauthorized ||
+                string.IsNullOrWhiteSpace(responseBody))
+            {
+                return false;
+            }
+
+            try
+            {
+                var detail = JObject.Parse(responseBody)["detail"];
+                return detail != null &&
+                    string.Equals(
+                        (string)detail["status"], "missing_permissions",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    ((string)detail["message"] ?? "").IndexOf(
+                        "pronunciation_dictionaries_write",
+                        StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch (Newtonsoft.Json.JsonException)
+            {
+                return false;
+            }
+        }
+
         public static JObject CreateSpeechRequest(
             string text,
             string voiceId,
             JObject dictionaryLocator)
         {
             if (string.IsNullOrWhiteSpace(text) ||
-                string.IsNullOrWhiteSpace(voiceId) ||
-                dictionaryLocator == null)
+                string.IsNullOrWhiteSpace(voiceId))
             {
                 throw new ArgumentException("Missing Eleven v4 synthesis parameters.");
             }
 
-            return new JObject
+            var body = new JObject
             {
                 ["inputs"] = new JArray(new JObject
                 {
@@ -66,10 +93,16 @@ namespace OhControl.ElevenLabs
                     ["voice_id"] = voiceId
                 }),
                 ["model_id"] = ModelId,
-                ["language_code"] = "fr",
-                ["pronunciation_dictionary_locators"] =
-                    new JArray(dictionaryLocator.DeepClone())
+                ["language_code"] = "fr"
             };
+
+            if (dictionaryLocator != null)
+            {
+                body["pronunciation_dictionary_locators"] =
+                    new JArray(dictionaryLocator.DeepClone());
+            }
+
+            return body;
         }
     }
 }

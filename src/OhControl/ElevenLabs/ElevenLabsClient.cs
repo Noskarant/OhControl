@@ -16,7 +16,7 @@ namespace OhControl.ElevenLabs
     public sealed class ElevenLabsClient : IDisposable
     {
         private const string TtsLanguageCode = "fr";
-        private const string TtsCacheVersion = "fr-radio-v4-ipa-bron-v1";
+        private const string TtsCacheVersion = "fr-radio-v4-ipa-bron-v2";
         private readonly HttpClient _httpClient = new HttpClient();
         private readonly string _cacheDirectory;
         private readonly string _pronunciationCachePath;
@@ -24,6 +24,9 @@ namespace OhControl.ElevenLabs
         private string _activeDictionaryFingerprint;
         private string _activeDictionaryId;
         private string _activeDictionaryVersion;
+        private bool _dictionaryWritePermissionDenied;
+
+        public event Action<string> Warning;
         private OhControlSettings _settings;
 
         public ElevenLabsClient(OhControlSettings settings)
@@ -122,19 +125,19 @@ namespace OhControl.ElevenLabs
                 return Array.Empty<byte>();
             }
 
-            string cachePath = GetCachePath(text);
+            string apiKey = _settings.ElevenLabsApiKey;
+            string voiceId = _settings.ElevenLabsVoiceId.Trim();
 
+            // Retrieve the dictionary first, then choose the matching cache.
+            // Audio generated without IPA must never shadow corrected audio.
+            JObject pronunciation = await GetPronunciationLocatorAsync(
+                apiKey, cancellationToken).ConfigureAwait(false);
+
+            string cachePath = GetCachePath(text, pronunciation != null);
             if (File.Exists(cachePath))
             {
                 return File.ReadAllBytes(cachePath);
             }
-
-            string apiKey = _settings.ElevenLabsApiKey;
-            string voiceId = _settings.ElevenLabsVoiceId.Trim();
-
-            // V4 standard uses the Dialogue API; the voice ID is unchanged.
-            JObject pronunciation = await GetPronunciationLocatorAsync(
-                apiKey, cancellationToken).ConfigureAwait(false);
 
             const string url =
                 "https://api.elevenlabs.io/v1/text-to-dialogue?output_format=mp3_44100_128";
@@ -206,6 +209,7 @@ namespace OhControl.ElevenLabs
                     _activeDictionaryFingerprint = null;
                     _activeDictionaryId = null;
                     _activeDictionaryVersion = null;
+                    _dictionaryWritePermissionDenied = false;
 
                     try
                     {
@@ -225,6 +229,13 @@ namespace OhControl.ElevenLabs
                     {
                         // Missing or corrupt metadata: recreate the dictionary.
                     }
+                }
+
+                // Avoid repeating the same forbidden API call for each ATC
+                // transmission. Changing keys or restarting retries discovery.
+                if (_dictionaryWritePermissionDenied)
+                {
+                    return null;
                 }
 
                 if (string.IsNullOrWhiteSpace(_activeDictionaryId) ||
@@ -249,6 +260,20 @@ namespace OhControl.ElevenLabs
                                 .ConfigureAwait(false);
                             if (!response.IsSuccessStatusCode)
                             {
+                                if (ElevenV4Speech.IsDictionaryWritePermissionMissing(
+                                    response.StatusCode, json))
+                                {
+                                    // Only this specific 401 can safely fall back.
+                                    // Other authentication failures must stay visible.
+                                    _activeDictionaryFingerprint = fingerprint;
+                                    _dictionaryWritePermissionDenied = true;
+                                    Warning?.Invoke(
+                                        "Eleven v4 sans dictionnaire : autorise " +
+                                        "Pronunciation Dictionaries (Write) dans " +
+                                        "la clé ElevenLabs pour corriger « Bron ».");
+                                    return null;
+                                }
+
                                 throw new InvalidOperationException(
                                     "Dictionnaire de prononciation ElevenLabs " +
                                     (int)response.StatusCode + ": " + json);
@@ -303,7 +328,7 @@ namespace OhControl.ElevenLabs
             }
         }
 
-        private string GetCachePath(string text)
+        private string GetCachePath(string text, bool hasDictionary)
         {
             string source =
                 _settings.ElevenLabsVoiceId +
@@ -311,6 +336,7 @@ namespace OhControl.ElevenLabs
                 TtsLanguageCode +
                 "|" +
                 TtsCacheVersion +
+                "|" + (hasDictionary ? "bron-ipa" : "no-dictionary") +
                 "|" +
                 text;
 
